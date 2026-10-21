@@ -12,6 +12,10 @@ extension Color {
     static let sfText2 = Color(red: 156 / 255, green: 170 / 255, blue: 192 / 255)
 }
 
+/// `LocalizedStringKey("role_\(x)")` builds the format key "role_%@" and shows the raw key on screen;
+/// a runtime key has to be passed as a plain String.
+func localized(_ key: String) -> LocalizedStringKey { LocalizedStringKey(key) }
+
 struct ContentView: View {
     @EnvironmentObject var c: CompanionController
     @State private var scanning = false
@@ -84,7 +88,7 @@ struct ContentView: View {
                     .foregroundStyle(.white)
             }
             if let m = c.message {
-                Text(LocalizedStringKey("msg_\(m.rawValue)")).font(.callout).padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                Text(localized("msg_" + m.rawValue)).font(.callout).padding(16).frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.sfDanger.opacity(0.15), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             Label("secure", systemImage: "lock.fill").font(.caption.weight(.medium)).foregroundStyle(Color.sfSuccess)
@@ -119,7 +123,7 @@ struct ContentView: View {
                         Text(c.phase == .connected ? String(localized: "connected_to \(c.desktopName ?? "PC")") : String(localized: "reconnecting"))
                             .font(.headline)
                     }
-                    Text(LocalizedStringKey("role_\(c.role)")).font(.callout).foregroundStyle(Color.sfText2)
+                    Text(localized("role_" + c.role)).font(.callout).foregroundStyle(Color.sfText2)
                     Label(c.viaCable ? "secure_usb" : "secure_wifi", systemImage: "lock.fill").font(.caption).foregroundStyle(Color.sfSuccess)
                 }
             }

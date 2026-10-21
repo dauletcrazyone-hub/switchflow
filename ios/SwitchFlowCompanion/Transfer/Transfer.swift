@@ -274,6 +274,7 @@ struct Receiver {
             let ns = error as NSError
             ack = AckBody(result: "failed", error: ns.domain == NSCocoaErrorDomain && ns.code == NSFileWriteOutOfSpaceError ? "insufficient_storage" : "io_error")
         }
+        if ack.result == "failed" { sfLog.error("receive \(item.category, privacy: .public) failed: \(ack.error ?? "?", privacy: .public)") }
         if let tempFile { try? FileManager.default.removeItem(at: tempFile) }
         // Already saved: never lose that fact to a network blip.
         for attempt in 1...10 {

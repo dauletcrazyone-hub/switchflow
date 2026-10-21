@@ -144,8 +144,10 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           APP=$(find ios/build/DerivedData/Build/Products -path "*iphonesimulator*" -name "SwitchFlowCompanion.app" | head -1)
           xcrun simctl install "$UDID" "$APP"
-          xcrun simctl privacy "$UDID" grant photos app.switchflow.companion
-          xcrun simctl privacy "$UDID" grant contacts app.switchflow.companion
+          # No one can tap permission dialogs in CI: grant everything the app may ask for.
+          for service in all photos photos-add contacts calendar; do
+            xcrun simctl privacy "$UDID" grant "$service" app.switchflow.companion || echo "grant $service not supported"
+          done
           xcrun simctl addmedia "$UDID" "$RUNNER_TEMP"/fixtures/expect/*.jpg
 
       - name: Run the end-to-end test
@@ -158,7 +160,7 @@ jobs:
           HOST=$!
           for i in $(seq 60); do [ -f "$OUT/pair-uri.txt" ] && break; sleep 1; done
           # Same content as the QR code; debug builds accept it as a launch argument.
-          xcrun simctl launch "$UDID" app.switchflow.companion -SFPairingURI "$(cat "$OUT/pair-uri.txt")" -AppleLanguages "(ru)" -AppleLocale ru_RU
+          xcrun simctl launch "$UDID" app.switchflow.companion -SFPairingURI "$(cat "$OUT/pair-uri.txt")" -SFSkipAccessCard YES -AppleLanguages "(ru)" -AppleLocale ru_RU
           i=0
           while kill -0 "$HOST" 2>/dev/null; do
             i=$((i + 1))

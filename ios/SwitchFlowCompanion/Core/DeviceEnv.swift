@@ -80,6 +80,7 @@ enum DeviceEnv {
 
     /// Hardware identifier, e.g. "iPhone16,1".
     static func identifier() -> String {
+        if let sim = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] { return sim }
         var info = utsname()
         uname(&info)
         return withUnsafePointer(to: &info.machine) { $0.withMemoryRebound(to: CChar.self, capacity: 1) { String(cString: $0) } }

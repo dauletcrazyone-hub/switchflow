@@ -4,6 +4,7 @@ import Foundation
 import Photos
 import SwiftUI
 import UIKit
+import os
 
 enum Phase { case idle, connecting, awaitingApproval, connected, reconnecting }
 
@@ -21,6 +22,9 @@ struct TransferUI {
 }
 
 /// The companion's brain: pairing, heartbeat, the PC's command queue and the session workers.
+/// Diagnostics without personal data: no file names, contact fields or tokens are logged.
+let sfLog = Logger(subsystem: "app.switchflow.companion", category: "companion")
+
 @MainActor
 final class CompanionController: ObservableObject {
     @Published var phase: Phase = .idle
@@ -42,6 +46,17 @@ final class CompanionController: ObservableObject {
     private let catalog = SourceCatalog()
     private let controls = SessionControls()
     private var accessContinuation: CheckedContinuation<Void, Never>?
+    /// Scans and prepares run one after another so one permission card never replaces another.
+    private var permissionChain: Task<Void, Never>?
+
+    /// Queues work that may ask the user for permission behind any earlier such work.
+    private func serially(_ work: @escaping @MainActor () async -> Void) {
+        let previous = permissionChain
+        permissionChain = Task { @MainActor in
+            await previous?.value
+            await work()
+        }
+    }
     private var documentsContinuation: CheckedContinuation<[URL], Never>?
 
     func start() {
@@ -71,7 +86,12 @@ final class CompanionController: ObservableObject {
     // MARK: Pairing
 
     func onScanned(_ raw: String) {
-        guard let target = PairingURI.parse(raw) else { message = .badQR; return }
+        guard let target = PairingURI.parse(raw) else {
+            sfLog.error("pairing code rejected")
+            message = .badQR
+            return
+        }
+        sfLog.info("pairing code accepted, \(target.hosts.count) addresses")
         Task { await pair(target) }
     }
 
@@ -102,6 +122,7 @@ final class CompanionController: ObservableObject {
                 let s = try await client.pairStatus(resp.pairingId)
                 switch s.status {
                 case "approved":
+                    sfLog.info("pairing approved")
                     guard let token = s.token else { continue }
                     let saved = SavedPairing(host: host, port: t.port, fingerprint: t.fingerprint, token: token, desktopName: s.desktopName ?? t.desktopName)
                     Store.pairing = saved
@@ -174,8 +195,8 @@ final class CompanionController: ObservableObject {
     private func handle(_ c: Command) {
         switch c.type {
         case "role": role = (try? c.decode(RoleCommand.self).role) ?? role
-        case "scan": if let cmd = try? c.decode(ScanCommand.self) { Task { await scan(cmd.categories) } }
-        case "prepare": if let cmd = try? c.decode(PrepareCommand.self) { Task { await prepare(cmd) } }
+        case "scan": if let cmd = try? c.decode(ScanCommand.self) { serially { await self.scan(cmd.categories) } }
+        case "prepare": if let cmd = try? c.decode(PrepareCommand.self) { serially { await self.prepare(cmd) } }
         case "upload": if let cmd = try? c.decode(UploadCommand.self) { enqueue(cmd) }
         case "download": if let cmd = try? c.decode(SessionCommand.self) { receive(cmd.sessionId) }
         case "pause": controls.paused = true; transfer?.paused = true
@@ -189,6 +210,10 @@ final class CompanionController: ObservableObject {
     // MARK: Permissions (only for the categories the PC asked for)
 
     private func waitForAccessTap(_ categories: [String]) async {
+        #if DEBUG
+        // Cloud end-to-end test: nobody can tap the card; permissions are pre-granted with simctl.
+        if UserDefaults.standard.bool(forKey: "SFSkipAccessCard") { return }
+        #endif
         askingAccess = categories
         await withCheckedContinuation { accessContinuation = $0 }
         askingAccess = nil
@@ -222,9 +247,11 @@ final class CompanionController: ObservableObject {
         guard let client = api else { return }
         let cats = categories.filter(Category.all.contains)
         // The user taps once in the app; then iOS shows its own dialog per category.
+        sfLog.info("scan requested: \(cats.joined(separator: ","), privacy: .public); photos=\(PHPhotoLibrary.authorizationStatus(for: .readWrite).rawValue) contacts=\(CNContactStore.authorizationStatus(for: .contacts).rawValue)")
         if needsPrompt(cats) { await waitForAccessTap(cats) }
         var states: [String: String] = [:]
         for c in cats { states[c] = await authorize(c, write: false) }
+        sfLog.info("scan permissions: \(states.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ","), privacy: .public)")
         if cats.contains(Category.documents) {
             askingDocuments = true
             let urls = await withCheckedContinuation { documentsContinuation = $0 }
@@ -232,12 +259,28 @@ final class CompanionController: ObservableObject {
         }
         var inventory: [CategoryInventory] = []
         for c in cats {
-            if let inv = try? await catalog.scan(c, permission: states[c] ?? PermissionState.denied) {
+            do {
+                let inv = try await catalog.scan(c, permission: states[c] ?? PermissionState.denied)
                 inv.items.forEach { names[$0.id] = $0.name }
                 inventory.append(inv)
+                sfLog.info("scan \(c, privacy: .public): \(inv.count) items, \(inv.totalBytes) bytes")
+            } catch {
+                // Report the failure instead of leaving the PC waiting on this category forever.
+                sfLog.error("scan \(c, privacy: .public) failed: \(String(describing: type(of: error)), privacy: .public)")
+                inventory.append(CategoryInventory(category: c, permission: PermissionState.unavailable, count: 0, totalBytes: 0, note: "scan_failed"))
             }
         }
-        try? await client.inventory(InventoryBody(categories: inventory))
+        await sendWithRetry("inventory") { try await client.inventory(InventoryBody(categories: inventory)) }
+    }
+
+    /// Results the PC is waiting for must arrive even through a short network hiccup.
+    private func sendWithRetry(_ what: String, _ send: () async throws -> Void) async {
+        for attempt in 1...5 {
+            do { try await send(); return } catch {
+                sfLog.error("sending \(what, privacy: .public) failed (attempt \(attempt))")
+                try? await Task.sleep(nanoseconds: UInt64(attempt) * 1_000_000_000)
+            }
+        }
     }
 
     private func enqueue(_ cmd: UploadCommand) {
@@ -265,6 +308,7 @@ final class CompanionController: ObservableObject {
                 } catch let e as APIError where e.status == 404 || e.status == 410 {
                     break
                 } catch {
+                    sfLog.error("upload queue stopped: \(String(describing: type(of: error)), privacy: .public)")
                     break // the PC re-sends the upload list after a reconnect
                 }
                 transfer?.itemsDone += 1
@@ -288,7 +332,10 @@ final class CompanionController: ObservableObject {
             perms[c] = s == PermissionState.limited ? PermissionState.granted : s
         }
         let ok = perms.values.allSatisfy { $0 == PermissionState.granted }
-        try? await client.prepareResult(PrepareResult(sessionId: cmd.sessionId, ok: ok, permissions: perms, storageFreeBytes: DeviceEnv.storage().free))
+        sfLog.info("prepare: \(perms.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ","), privacy: .public)")
+        await sendWithRetry("prepare result") {
+            try await client.prepareResult(PrepareResult(sessionId: cmd.sessionId, ok: ok, permissions: perms, storageFreeBytes: DeviceEnv.storage().free))
+        }
     }
 
     private func receive(_ sid: String) {
