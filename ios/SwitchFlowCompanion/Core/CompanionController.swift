@@ -1,4 +1,7 @@
+import Contacts
+import EventKit
 import Foundation
+import Photos
 import SwiftUI
 import UIKit
 
@@ -42,7 +45,27 @@ final class CompanionController: ObservableObject {
     private var documentsContinuation: CheckedContinuation<[URL], Never>?
 
     func start() {
+        #if DEBUG
+        // Test hook for the cloud end-to-end test: the simulator has no camera, so the QR content
+        // arrives as a launch argument (-SFPairingURI "switchflow://pair?..."). Release builds ignore it.
+        if let uri = UserDefaults.standard.string(forKey: "SFPairingURI"), !uri.isEmpty {
+            onScanned(uri)
+            return
+        }
+        #endif
         if let saved = Store.pairing { connect(saved) }
+    }
+
+    /// True only when iOS would actually show a permission dialog; no extra tap when access is already decided.
+    private func needsPrompt(_ cats: [String]) -> Bool {
+        cats.contains { cat in
+            switch cat {
+            case Category.photos, Category.videos: return PHPhotoLibrary.authorizationStatus(for: .readWrite) == .notDetermined
+            case Category.contacts: return CNContactStore.authorizationStatus(for: .contacts) == .notDetermined
+            case Category.calendars: return EKEventStore.authorizationStatus(for: .event) == .notDetermined
+            default: return false
+            }
+        }
     }
 
     // MARK: Pairing
@@ -199,8 +222,7 @@ final class CompanionController: ObservableObject {
         guard let client = api else { return }
         let cats = categories.filter(Category.all.contains)
         // The user taps once in the app; then iOS shows its own dialog per category.
-        let needsPrompt = cats.contains { [Category.photos, Category.videos, Category.contacts, Category.calendars].contains($0) }
-        if needsPrompt { await waitForAccessTap(cats) }
+        if needsPrompt(cats) { await waitForAccessTap(cats) }
         var states: [String: String] = [:]
         for c in cats { states[c] = await authorize(c, write: false) }
         if cats.contains(Category.documents) {
@@ -259,8 +281,7 @@ final class CompanionController: ObservableObject {
     private func prepare(_ cmd: PrepareCommand) async {
         guard let client = api else { return }
         let cats = cmd.categories.filter(Category.all.contains)
-        let needsPrompt = cats.contains { [Category.photos, Category.videos, Category.contacts, Category.calendars].contains($0) }
-        if needsPrompt { await waitForAccessTap(cats) }
+        if needsPrompt(cats) { await waitForAccessTap(cats) }
         var perms: [String: String] = [:]
         for c in cats {
             let s = await authorize(c, write: true)

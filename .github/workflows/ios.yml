@@ -5,9 +5,9 @@ name: iOS
 
 on:
   push:
-    paths: ["ios/**", ".github/workflows/ios.yml"]
+    paths: ["ios/**", "desktop/src-tauri/**", ".github/workflows/ios.yml"]
   pull_request:
-    paths: ["ios/**", ".github/workflows/ios.yml"]
+    paths: ["ios/**", "desktop/src-tauri/**", ".github/workflows/ios.yml"]
   workflow_dispatch:
 
 concurrency:
@@ -95,5 +95,102 @@ jobs:
             ios/build/xcodebuild.log
             ios/build/*.png
             ios/build/Tests.xcresult
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # The iOS app in the simulator talks to the real SwitchFlow core (the same Rust code as the
+  # Windows app) over real TLS on this Mac: iPhone → PC backup, PC → iPhone restore, repeat restore.
+  e2e:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Build the SwitchFlow core test host
+        working-directory: desktop/src-tauri
+        run: cargo build --example ios_e2e_host
+
+      - name: Build the iOS app for the simulator
+        working-directory: ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          runtimes = sorted((r for r in devices if "iOS" in r), reverse=True)
+          print(next(d["udid"] for r in runtimes for d in devices[r] if d["name"].startswith("iPhone")))
+          ')
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          set -o pipefail
+          xcodebuild build -project SwitchFlowCompanion.xcodeproj -scheme SwitchFlowCompanion -configuration Debug \
+            -destination "id=$UDID" -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO 2>&1 | tail -3
+
+      - name: Prepare the simulator (photos, permissions)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv" && "$RUNNER_TEMP/venv/bin/pip" install -q pillow
+          "$RUNNER_TEMP/venv/bin/python" ios/ci/make_fixtures.py "$RUNNER_TEMP/fixtures"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          APP=$(find ios/build/DerivedData/Build/Products -path "*iphonesimulator*" -name "SwitchFlowCompanion.app" | head -1)
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl privacy "$UDID" grant photos app.switchflow.companion
+          xcrun simctl privacy "$UDID" grant contacts app.switchflow.companion
+          xcrun simctl addmedia "$UDID" "$RUNNER_TEMP"/fixtures/expect/*.jpg
+
+      - name: Run the end-to-end test
+        run: |
+          OUT="$RUNNER_TEMP/e2e"
+          mkdir -p "$OUT"
+          ./desktop/src-tauri/target/debug/examples/ios_e2e_host --out "$OUT" \
+            --expect-photos "$RUNNER_TEMP/fixtures/expect" --restore-photos "$RUNNER_TEMP/fixtures/restore" \
+            > "$OUT/host.log" 2>&1 &
+          HOST=$!
+          for i in $(seq 60); do [ -f "$OUT/pair-uri.txt" ] && break; sleep 1; done
+          # Same content as the QR code; debug builds accept it as a launch argument.
+          xcrun simctl launch "$UDID" app.switchflow.companion -SFPairingURI "$(cat "$OUT/pair-uri.txt")" -AppleLanguages "(ru)" -AppleLocale ru_RU
+          i=0
+          while kill -0 "$HOST" 2>/dev/null; do
+            i=$((i + 1))
+            [ "$i" -le 40 ] && xcrun simctl io "$UDID" screenshot "$OUT/shot-$(printf %02d "$i").png" >/dev/null 2>&1
+            sleep 6
+          done
+          wait "$HOST" && STATUS=0 || STATUS=$?
+          xcrun simctl io "$UDID" screenshot "$OUT/shot-final.png" >/dev/null 2>&1 || true
+          cat "$OUT/host.log"
+          {
+            echo "## iOS ↔ SwitchFlow core end-to-end"
+            echo '```'
+            tail -40 "$OUT/host.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$STATUS"
+
+      - name: Collect the iOS app log
+        if: always()
+        run: |
+          xcrun simctl spawn "$UDID" log show --last 30m --style compact \
+            --predicate 'process == "SwitchFlowCompanion"' > "$RUNNER_TEMP/e2e/app.log" 2>&1 || true
+          find "$RUNNER_TEMP/e2e/Documents" -name switchflow-backup.json -exec cp {} "$RUNNER_TEMP/e2e/" \; 2>/dev/null || true
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: e2e-results
+          path: |
+            ${{ runner.temp }}/e2e/*.log
+            ${{ runner.temp }}/e2e/*.png
+            ${{ runner.temp }}/e2e/*.json
           if-no-files-found: ignore
           retention-days: 14
