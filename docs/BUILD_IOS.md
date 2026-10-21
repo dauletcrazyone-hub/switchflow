@@ -29,7 +29,13 @@ gh run download <id> -n ios-results
 gh run download <id> -n e2e-results
 ```
 
-Для установки на настоящий iPhone без Mac нужен аккаунт Apple Developer и загрузка сборки в TestFlight
+### Установка на настоящий iPhone без Mac
+
+Задание **build-and-test** также собирает неподписанный `SwitchFlow-<версия>-unsigned.ipa` (Release, для
+устройства) в артефакт **ios-ipa**. Его можно поставить на iPhone с Windows через Sideloadly с бесплатным
+Apple ID (приложение работает 7 дней, потом переустановка) — пошагово: [INSTALL_IPHONE.md](INSTALL_IPHONE.md).
+
+Без ограничения в 7 дней и для раздачи другим людям нужен аккаунт Apple Developer и TestFlight
 (подпись в облаке через App Store Connect API key) — этот шаг ещё не настроен.
 
 ## Требования

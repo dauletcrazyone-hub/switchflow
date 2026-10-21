@@ -56,7 +56,7 @@ Android и iPhone: фото, видео, контакты, календари, �
 ### Ещё **не** проверено
 
 - ❗ **Перенос между двумя физическими телефонами пока не выполнялся** — был доступен один телефон. План проверки — [docs/STATUS.md](docs/STATUS.md#план-проверки-на-устройствах).
-- iOS-приложение **собирается в облаке** (GitHub Actions, Xcode 26.3): компилируется без предупреждений, 4 теста проходят, запускается в симуляторе iPhone на русском и английском. Сквозной тест в облаке: приложение в симуляторе переносит тестовые фото и контакты на настоящее ядро SwitchFlow и обратно с проверкой SHA-256. **На настоящем iPhone ещё не проверялось** — для этого нужен аккаунт Apple Developer и TestFlight (см. [docs/BUILD_IOS.md](docs/BUILD_IOS.md)).
+- iOS-приложение **собирается в облаке** (GitHub Actions, Xcode 26.3): компилируется без предупреждений, 4 теста проходят, запускается в симуляторе iPhone на русском и английском. Сквозной тест в облаке: приложение в симуляторе переносит тестовые фото и контакты на настоящее ядро SwitchFlow и обратно с проверкой SHA-256. **На настоящем iPhone ещё не проверялось** — облако собирает `.ipa`, который можно поставить с Windows через Sideloadly с бесплатным Apple ID: [docs/INSTALL_IPHONE.md](docs/INSTALL_IPHONE.md).
 - Обнаружение телефонов по USB (WPD / SetupAPI) не проверялось с реально подключённым телефоном.
 
 Полный список возможностей и ограничений — [docs/STATUS.md](docs/STATUS.md).
@@ -95,6 +95,7 @@ cd android && ./gradlew testDebugUnitTest
 | Windows `.exe` и установщики | [docs/BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md) | `desktop/src-tauri/target/release/bundle/nsis/*.exe`, `…/msi/*.msi` |
 | Android APK | [docs/BUILD_ANDROID.md](docs/BUILD_ANDROID.md) | `android/app/build/outputs/apk/…` |
 | iOS (подпись, TestFlight) | [docs/BUILD_IOS.md](docs/BUILD_IOS.md) | только macOS + Xcode |
+| iPhone без Mac (Sideloadly) | [docs/INSTALL_IPHONE.md](docs/INSTALL_IPHONE.md) | Windows + бесплатный Apple ID |
 
 ## Демо-режим
 
