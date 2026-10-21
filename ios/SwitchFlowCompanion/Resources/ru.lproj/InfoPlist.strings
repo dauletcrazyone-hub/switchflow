@@ -1,0 +1,9 @@
+/* Texts of the iOS permission dialogs (Info.plist), in Russian. */
+"NSLocalNetworkUsageDescription" = "SwitchFlow подключается к вашему компьютеру с Windows в той же сети Wi-Fi, чтобы перенести данные. Ничего не отправляется в интернет.";
+"NSCameraUsageDescription" = "Камера нужна, чтобы отсканировать QR-код, который SwitchFlow показывает на компьютере.";
+"NSPhotoLibraryUsageDescription" = "SwitchFlow читает фото и видео, которые вы выбрали для переноса, и сохраняет полученные. Оригиналы не изменяются.";
+"NSPhotoLibraryAddUsageDescription" = "SwitchFlow сохраняет фото и видео, полученные с другого телефона.";
+"NSContactsUsageDescription" = "SwitchFlow читает контакты, если вы выбрали их для переноса, и добавляет полученные контакты.";
+"NSCalendarsFullAccessUsageDescription" = "SwitchFlow читает события календаря, выбранные для переноса, и добавляет полученные события.";
+"NSCalendarsWriteOnlyAccessUsageDescription" = "SwitchFlow добавляет полученные события календаря.";
+"NSCalendarsUsageDescription" = "SwitchFlow читает события календаря, выбранные для переноса, и добавляет полученные события.";
