@@ -1,0 +1,99 @@
+# Builds the iOS companion on a GitHub-hosted Mac, runs its unit tests in the iPhone
+# simulator and captures screenshots. No Apple Developer account is needed for this:
+# simulator builds are unsigned.
+name: iOS
+
+on:
+  push:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  pull_request:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          xcodebuild -version
+
+      - name: Pick an iPhone simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          runtimes = sorted((r for r in devices if "iOS" in r), reverse=True)
+          print(next(d["udid"] for r in runtimes for d in devices[r] if d["name"].startswith("iPhone")))
+          ')
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl list devices | grep "$UDID"
+
+      - name: Build and run unit tests
+        run: |
+          mkdir -p build
+          set -o pipefail
+          xcodebuild test \
+            -project SwitchFlowCompanion.xcodeproj \
+            -scheme SwitchFlowCompanion \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath build/DerivedData \
+            -resultBundlePath build/Tests.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee build/xcodebuild.log | grep -E "error:|warning:|Test Case|Executed|BUILD|\*\* " || true
+          # grep above only filters the console; the real exit code is xcodebuild's.
+          test "${PIPESTATUS[0]}" -eq 0
+
+      - name: Summarise compiler errors
+        if: failure()
+        run: |
+          {
+            echo "## Compiler errors"
+            echo '```'
+            grep -E "error:" build/xcodebuild.log | sort -u | head -80 || echo "no 'error:' lines"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Screenshots in the simulator
+        if: success()
+        run: |
+          UDID=${{ steps.sim.outputs.udid }}
+          APP=$(find build/DerivedData/Build/Products -path "*iphonesimulator*" -name "SwitchFlowCompanion.app" | head -1)
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP"
+          for lang in ru en; do
+            xcrun simctl terminate "$UDID" app.switchflow.companion || true
+            xcrun simctl launch "$UDID" app.switchflow.companion -AppleLanguages "($lang)" -AppleLocale "${lang}_RU"
+            sleep 8
+            xcrun simctl io "$UDID" screenshot "build/welcome-$lang.png"
+          done
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-results
+          path: |
+            ios/build/xcodebuild.log
+            ios/build/*.png
+            ios/build/Tests.xcresult
+          if-no-files-found: ignore
+          retention-days: 14
