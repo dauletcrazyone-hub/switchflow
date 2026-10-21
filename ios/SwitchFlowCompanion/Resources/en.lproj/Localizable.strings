@@ -10,7 +10,7 @@
 "msg_denied" = "The PC declined the connection.";
 "msg_expired" = "The request expired. Scan the code again.";
 "msg_forgotten" = "The PC no longer knows this iPhone. Scan the QR code again.";
-"secure" = "Encrypted · certificate verified";
+"secure" = "Encrypted · verified via QR code";
 "secure_wifi" = "Encrypted · Wi-Fi";
 "secure_usb" = "Encrypted · USB";
 "connected_to %@" = "Connected to %@";

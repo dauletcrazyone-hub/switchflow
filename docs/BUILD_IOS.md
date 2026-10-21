@@ -1,7 +1,20 @@
 # Сборка и подпись iOS-компаньона
 
-> Нативная сборка iOS возможна **только на macOS с Xcode**. На Windows её выполнить нельзя.
-> Код в `ios/` пока **не компилировался** — при первой сборке в Xcode возможны ошибки, которые нужно исправить.
+> Нативная сборка iOS возможна только на macOS с Xcode — но свой Mac не обязателен.
+
+## Без Mac: облачная сборка (GitHub Actions)
+
+`.github/workflows/ios.yml` запускается при каждом изменении в `ios/` (или вручную: GitHub → Actions → iOS →
+Run workflow). На облачном Mac он генерирует проект XcodeGen, собирает приложение, прогоняет тесты в симуляторе
+iPhone и сохраняет журнал сборки, результаты тестов и скриншоты в артефакт **ios-results**.
+
+```bash
+gh run list --workflow ios.yml
+gh run download <id> -n ios-results
+```
+
+Для установки на настоящий iPhone без Mac нужен аккаунт Apple Developer и загрузка сборки в TestFlight
+(подпись в облаке через App Store Connect API key) — этот шаг ещё не настроен.
 
 ## Требования
 - Mac с macOS 14+ и Xcode 15+ (Swift 5.9).

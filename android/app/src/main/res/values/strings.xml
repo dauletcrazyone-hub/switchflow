@@ -44,5 +44,5 @@
     <string name="cat_music">Music</string>
     <string name="cat_calendars">Calendars</string>
     <string name="camera_needed">Camera access is needed to scan the QR code.</string>
-    <string name="secure">Encrypted connection · certificate verified</string>
+    <string name="secure">Encrypted · verified via QR code</string>
 </resources>
