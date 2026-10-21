@@ -133,7 +133,8 @@ jobs:
           ')
           echo "UDID=$UDID" >> "$GITHUB_ENV"
           set -o pipefail
-          xcodebuild build -project SwitchFlowCompanion.xcodeproj -scheme SwitchFlowCompanion -configuration Debug \
+          # The app (Debug) plus the UI-test driver that plays the person holding the phone.
+          xcodebuild build-for-testing -project SwitchFlowCompanion.xcodeproj -scheme SwitchFlowE2E \
             -destination "id=$UDID" -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO 2>&1 | tail -3
 
       - name: Prepare the simulator (photos, permissions)
@@ -144,7 +145,8 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           APP=$(find ios/build/DerivedData/Build/Products -path "*iphonesimulator*" -name "SwitchFlowCompanion.app" | head -1)
           xcrun simctl install "$UDID" "$APP"
-          # No one can tap permission dialogs in CI: grant everything the app may ask for.
+          # Pre-grant what simctl can; the UI-test driver taps whatever dialog still appears
+          # (full Photos access is not pre-granted on iOS 26 simulators).
           # "photos" (full access) goes last: a later "photos-add" would downgrade it to add-only.
           for service in all contacts calendar photos; do
             xcrun simctl privacy "$UDID" grant "$service" app.switchflow.companion || echo "grant $service not supported"
@@ -160,16 +162,27 @@ jobs:
             > "$OUT/host.log" 2>&1 &
           HOST=$!
           for i in $(seq 60); do [ -f "$OUT/pair-uri.txt" ] && break; sleep 1; done
-          # Same content as the QR code; debug builds accept it as a launch argument.
-          xcrun simctl launch "$UDID" app.switchflow.companion -SFPairingURI "$(cat "$OUT/pair-uri.txt")" -SFSkipAccessCard YES -AppleLanguages "(ru)" -AppleLocale ru_RU
+          # The driver opens the app with the QR code's content (debug builds accept it as a
+          # launch argument) and answers permission dialogs until the PC side is done.
+          # TEST_RUNNER_X reaches the test as X.
+          export TEST_RUNNER_SF_PAIRING_URI="$(cat "$OUT/pair-uri.txt")"
+          export TEST_RUNNER_SF_DONE_FILE="$OUT/done"
+          (cd ios && xcodebuild test-without-building -project SwitchFlowCompanion.xcodeproj -scheme SwitchFlowE2E \
+            -destination "id=$UDID" -derivedDataPath build/DerivedData -resultBundlePath "$OUT/E2E.xcresult" \
+            CODE_SIGNING_ALLOWED=NO > "$OUT/driver.log" 2>&1) &
+          DRIVER=$!
           i=0
           while kill -0 "$HOST" 2>/dev/null; do
             i=$((i + 1))
-            [ "$i" -le 40 ] && xcrun simctl io "$UDID" screenshot "$OUT/shot-$(printf %02d "$i").png" >/dev/null 2>&1
+            [ "$i" -le 60 ] && xcrun simctl io "$UDID" screenshot "$OUT/shot-$(printf %02d "$i").png" >/dev/null 2>&1
             sleep 6
           done
           wait "$HOST" && STATUS=0 || STATUS=$?
           xcrun simctl io "$UDID" screenshot "$OUT/shot-final.png" >/dev/null 2>&1 || true
+          touch "$OUT/done"
+          for i in $(seq 60); do kill -0 "$DRIVER" 2>/dev/null || break; sleep 1; done
+          kill "$DRIVER" 2>/dev/null || true
+          grep "SF-E2E\|error:\|Test Case" "$OUT/driver.log" || tail -30 "$OUT/driver.log"
           cat "$OUT/host.log"
           {
             echo "## iOS ↔ SwitchFlow core end-to-end"
@@ -195,5 +208,6 @@ jobs:
             ${{ runner.temp }}/e2e/*.log
             ${{ runner.temp }}/e2e/*.png
             ${{ runner.temp }}/e2e/*.json
+            ${{ runner.temp }}/e2e/E2E.xcresult
           if-no-files-found: ignore
           retention-days: 14
