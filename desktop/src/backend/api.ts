@@ -1,0 +1,54 @@
+import type {
+  AppInfo,
+  BackupInfo,
+  Category,
+  HistoryEntry,
+  PairingInfo,
+  Settings,
+  Snapshot,
+  StartRequest,
+} from "./types";
+
+/**
+ * Everything the UI can ask of the backend. Two implementations exist:
+ * `TauriBackend` (the real Rust core) and `DemoBackend` (simulated, clearly labelled).
+ */
+export interface Backend {
+  readonly kind: "tauri" | "demo";
+  getSnapshot(): Promise<Snapshot>;
+  onSnapshot(cb: (s: Snapshot) => void): () => void;
+  onSessionFinished(cb: (h: HistoryEntry) => void): () => void;
+
+  startPairing(): Promise<PairingInfo>;
+  stopPairing(): Promise<void>;
+  respondPairing(id: string, approve: boolean): Promise<void>;
+  setRoles(source: string | null, target: string | null): Promise<void>;
+  swapRoles(): Promise<void>;
+  unpairDevice(id: string): Promise<void>;
+  requestScan(categories: Category[]): Promise<void>;
+
+  startSession(request: StartRequest): Promise<string>;
+  pauseSession(): Promise<void>;
+  resumeSession(): Promise<void>;
+  cancelSession(): Promise<void>;
+  retryFailed(): Promise<number>;
+  rerunPreflight(): Promise<void>;
+  dismissSession(): Promise<void>;
+  resumeSavedSession(): Promise<void>;
+  discardSavedSession(): Promise<void>;
+
+  getHistory(): Promise<HistoryEntry[]>;
+  clearHistory(): Promise<void>;
+  getSettings(): Promise<Settings>;
+  updateSettings(settings: Settings): Promise<Settings>;
+  listBackups(): Promise<BackupInfo[]>;
+  getAppInfo(): Promise<AppInfo>;
+  revealPath(path: string): Promise<void>;
+  adbReverse(serial: string): Promise<void>;
+  resetIdentity(): Promise<void>;
+  pickFolder(): Promise<string | null>;
+}
+
+export function isTauri(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}

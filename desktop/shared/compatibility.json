@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "categories": [
+    "photos",
+    "videos",
+    "contacts",
+    "documents",
+    "music",
+    "calendars",
+    "messages",
+    "callHistory",
+    "settings",
+    "appData",
+    "whatsapp"
+  ],
+  "transferable": ["photos", "videos", "contacts", "documents", "music", "calendars"],
+  "rules": {
+    "photos": {
+      "android>ios": { "status": "supported", "note": null },
+      "ios>android": { "status": "supported", "note": "compat.photos.heic" },
+      "android>android": { "status": "supported", "note": null },
+      "ios>ios": { "status": "supported", "note": null }
+    },
+    "videos": {
+      "android>ios": { "status": "supported", "note": null },
+      "ios>android": { "status": "supported", "note": "compat.videos.hevc" },
+      "android>android": { "status": "supported", "note": null },
+      "ios>ios": { "status": "supported", "note": null }
+    },
+    "contacts": {
+      "android>ios": { "status": "supported", "note": null },
+      "ios>android": { "status": "supported", "note": null },
+      "android>android": { "status": "supported", "note": null },
+      "ios>ios": { "status": "supported", "note": null }
+    },
+    "documents": {
+      "android>ios": { "status": "action_required", "note": "compat.documents.pick" },
+      "ios>android": { "status": "action_required", "note": "compat.documents.pick" },
+      "android>android": { "status": "action_required", "note": "compat.documents.pick" },
+      "ios>ios": { "status": "action_required", "note": "compat.documents.pick" }
+    },
+    "music": {
+      "android>ios": { "status": "action_required", "note": "compat.music.toFiles" },
+      "ios>android": { "status": "unsupported", "note": "compat.music.iosExport" },
+      "android>android": { "status": "supported", "note": null },
+      "ios>ios": { "status": "unsupported", "note": "compat.music.iosExport" }
+    },
+    "calendars": {
+      "android>ios": { "status": "supported", "note": null },
+      "ios>android": { "status": "action_required", "note": "compat.calendars.androidAccount" },
+      "android>android": { "status": "action_required", "note": "compat.calendars.androidAccount" },
+      "ios>ios": { "status": "supported", "note": null }
+    },
+    "messages": {
+      "android>ios": { "status": "official_tool", "note": "compat.official.moveToIos" },
+      "ios>android": { "status": "official_tool", "note": "compat.official.switchToAndroid" },
+      "android>android": { "status": "official_tool", "note": "compat.official.androidSetup" },
+      "ios>ios": { "status": "official_tool", "note": "compat.official.quickStart" }
+    },
+    "callHistory": {
+      "android>ios": { "status": "official_tool", "note": "compat.official.moveToIos" },
+      "ios>android": { "status": "official_tool", "note": "compat.official.switchToAndroid" },
+      "android>android": { "status": "official_tool", "note": "compat.official.androidSetup" },
+      "ios>ios": { "status": "official_tool", "note": "compat.official.quickStart" }
+    },
+    "settings": {
+      "android>ios": { "status": "unsupported", "note": "compat.settings.none" },
+      "ios>android": { "status": "unsupported", "note": "compat.settings.none" },
+      "android>android": { "status": "official_tool", "note": "compat.official.androidSetup" },
+      "ios>ios": { "status": "official_tool", "note": "compat.official.quickStart" }
+    },
+    "appData": {
+      "android>ios": { "status": "unsupported", "note": "compat.appData.sandbox" },
+      "ios>android": { "status": "unsupported", "note": "compat.appData.sandbox" },
+      "android>android": { "status": "official_tool", "note": "compat.official.androidSetup" },
+      "ios>ios": { "status": "official_tool", "note": "compat.official.quickStart" }
+    },
+    "whatsapp": {
+      "android>ios": { "status": "official_tool", "note": "compat.official.whatsapp" },
+      "ios>android": { "status": "official_tool", "note": "compat.official.whatsapp" },
+      "android>android": { "status": "official_tool", "note": "compat.official.whatsapp" },
+      "ios>ios": { "status": "official_tool", "note": "compat.official.whatsapp" }
+    }
+  }
+}

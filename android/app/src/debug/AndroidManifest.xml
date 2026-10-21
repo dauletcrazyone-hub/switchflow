@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug builds only: lets automated tests deliver the QR pairing URI with
+  `adb shell am start -a android.intent.action.VIEW -d "switchflow://pair?..."`.
+  Not BROWSABLE, and MainActivity ignores the link in release builds.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="switchflow" android:host="pair" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

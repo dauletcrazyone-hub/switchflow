@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ru</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>ru</string>
+		<string>en</string>
+	</array>
+	<key>CFBundleDisplayName</key>
+	<string>SwitchFlow</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string></string>
+	</dict>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
+	<!-- Received documents and music appear in Files › On My iPhone › SwitchFlow -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+
+	<!-- The PC is addressed by its LAN IP; identity is checked by certificate pinning. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>SwitchFlow connects to your Windows PC on the same Wi-Fi network to transfer your data. Nothing is sent to the internet.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>The camera scans the QR code shown by SwitchFlow on your PC.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>SwitchFlow reads the photos and videos you choose to transfer and saves the ones you receive. Originals are never changed.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>SwitchFlow saves the photos and videos you receive from your other phone.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>SwitchFlow reads your contacts when you choose to transfer them, and adds contacts you receive.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>SwitchFlow reads calendar events you choose to transfer and adds events you receive.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>SwitchFlow adds the calendar events you receive.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>SwitchFlow reads calendar events you choose to transfer and adds events you receive.</string>
+</dict>
+</plist>

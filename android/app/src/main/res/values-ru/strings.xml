@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="slogan">Ваши данные. Ваши устройства. Один плавный переход.</string>
+    <string name="connect">Подключиться к компьютеру</string>
+    <string name="connect_hint">Откройте SwitchFlow на компьютере с Windows, нажмите «Показать QR-код» и отсканируйте его.</string>
+    <string name="scan_prompt">Наведите камеру на QR-код на экране компьютера</string>
+    <string name="bad_qr">Это не код SwitchFlow. Отсканируйте код с экрана компьютера.</string>
+    <string name="connecting">Подключение к %1$s…</string>
+    <string name="unreachable">Компьютер недоступен. Проверьте, что телефон и компьютер в одной сети Wi-Fi.</string>
+    <string name="compare_code">Убедитесь, что на компьютере показан этот же код, и нажмите там «Разрешить»</string>
+    <string name="waiting_approval">Ожидание подтверждения на компьютере…</string>
+    <string name="denied">Компьютер отклонил подключение.</string>
+    <string name="expired">Запрос устарел. Отсканируйте код ещё раз.</string>
+    <string name="connected_to">Подключено к %1$s</string>
+    <string name="role_source">Этот телефон — источник</string>
+    <string name="role_target">Этот телефон — получатель</string>
+    <string name="role_none">Компьютер выбирает направление переноса</string>
+    <string name="reconnecting">Связь потеряна. Переподключение…</string>
+    <string name="forgotten">Компьютер больше не знает этот телефон. Отсканируйте QR-код снова.</string>
+    <string name="disconnect">Отключиться</string>
+    <string name="access_title">Компьютер просит доступ</string>
+    <string name="access_body">Разрешите SwitchFlow прочитать: %1$s</string>
+    <string name="access_body_write">Разрешите SwitchFlow сохранить: %1$s</string>
+    <string name="allow">Разрешить</string>
+    <string name="pick_docs_title">Выберите документы</string>
+    <string name="pick_docs_body">Android не даёт приложениям видеть все файлы. Выберите документы для переноса.</string>
+    <string name="pick_docs">Выбрать файлы</string>
+    <string name="skip">Пропустить</string>
+    <string name="sending">Отправка</string>
+    <string name="receiving">Получение</string>
+    <string name="progress_count">%1$d из %2$d</string>
+    <string name="paused">Пауза на компьютере</string>
+    <string name="done">Перенос завершён</string>
+    <string name="cancelled">Перенос отменён</string>
+    <string name="keep_open">Не закрывайте приложение до конца переноса.</string>
+    <string name="originals_safe">Оригиналы на этом телефоне не изменяются и не удаляются.</string>
+    <string name="notif_channel">Перенос</string>
+    <string name="notif_connected">Подключено к компьютеру</string>
+    <string name="cat_photos">Фото</string>
+    <string name="cat_videos">Видео</string>
+    <string name="cat_contacts">Контакты</string>
+    <string name="cat_documents">Документы</string>
+    <string name="cat_music">Музыка</string>
+    <string name="cat_calendars">Календари</string>
+    <string name="camera_needed">Чтобы отсканировать QR-код, нужен доступ к камере.</string>
+    <string name="secure">Шифрование · сертификат проверен</string>
+</resources>
