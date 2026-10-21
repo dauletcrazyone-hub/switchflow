@@ -13,6 +13,22 @@ gh run list --workflow ios.yml
 gh run download <id> -n ios-results
 ```
 
+Второе задание, **e2e**, — сквозной тест iPhone ↔ ядро SwitchFlow на том же облачном Mac:
+
+1. `cargo build --example ios_e2e_host` — настоящее ядро SwitchFlow без интерфейса
+   (`desktop/src-tauri/examples/ios_e2e_host.rs`): пишет код сопряжения и сам подтверждает подключение.
+2. В «Фото» симулятора кладутся тестовые снимки (`ios/ci/make_fixtures.py`).
+3. UI-тест `ios/SwitchFlowE2E` запускает Debug-сборку приложения с содержимым QR-кода
+   (`-SFPairingURI`) и нажимает «Разрешить полный доступ» в системных запросах.
+4. Ядро делает резервную копию iPhone → ПК, восстановление ПК → iPhone и повторное восстановление,
+   проверяя SHA-256, число контактов и пропуск дубликатов. Итог — «E2E PASSED» и `summary.json`.
+
+Скриншоты, журналы ядра, приложения и UI-теста — в артефакте **e2e-results**:
+
+```bash
+gh run download <id> -n e2e-results
+```
+
 Для установки на настоящий iPhone без Mac нужен аккаунт Apple Developer и загрузка сборки в TestFlight
 (подпись в облаке через App Store Connect API key) — этот шаг ещё не настроен.
 
