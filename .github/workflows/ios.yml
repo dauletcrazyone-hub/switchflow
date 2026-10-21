@@ -145,7 +145,8 @@ jobs:
           APP=$(find ios/build/DerivedData/Build/Products -path "*iphonesimulator*" -name "SwitchFlowCompanion.app" | head -1)
           xcrun simctl install "$UDID" "$APP"
           # No one can tap permission dialogs in CI: grant everything the app may ask for.
-          for service in all photos photos-add contacts calendar; do
+          # "photos" (full access) goes last: a later "photos-add" would downgrade it to add-only.
+          for service in all contacts calendar photos; do
             xcrun simctl privacy "$UDID" grant "$service" app.switchflow.companion || echo "grant $service not supported"
           done
           xcrun simctl addmedia "$UDID" "$RUNNER_TEMP"/fixtures/expect/*.jpg
@@ -181,7 +182,7 @@ jobs:
       - name: Collect the iOS app log
         if: always()
         run: |
-          xcrun simctl spawn "$UDID" log show --last 30m --style compact \
+          xcrun simctl spawn "$UDID" log show --last 30m --style compact --info --debug \
             --predicate 'process == "SwitchFlowCompanion"' > "$RUNNER_TEMP/e2e/app.log" 2>&1 || true
           find "$RUNNER_TEMP/e2e/Documents" -name switchflow-backup.json -exec cp {} "$RUNNER_TEMP/e2e/" \; 2>/dev/null || true
 
