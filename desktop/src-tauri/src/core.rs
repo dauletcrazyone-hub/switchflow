@@ -11,7 +11,8 @@ use crate::session::Session;
 use crate::settings::Settings;
 use base64::Engine;
 use rand::RngCore;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
@@ -36,6 +37,8 @@ pub struct Paths {
     pub history_file: PathBuf,
     pub ledger_file: PathBuf,
     pub session_file: PathBuf,
+    /// Paired phones (token hashes only), so phones stay paired across restarts.
+    pub devices_file: PathBuf,
     pub default_staging: PathBuf,
     pub default_backups: PathBuf,
 }
@@ -49,6 +52,7 @@ impl Paths {
             history_file: data_dir.join("history.json"),
             ledger_file: data_dir.join("ledger.txt"),
             session_file: data_dir.join("session.json"),
+            devices_file: data_dir.join("devices.json"),
             default_staging: data_dir.join("staging"),
             default_backups: documents_dir.unwrap_or_else(|| data_dir.clone()).join("SwitchFlow Backups"),
             data_dir,
@@ -104,7 +108,8 @@ pub struct Pairing {
 #[derive(Debug)]
 pub struct DeviceConn {
     pub info: DeviceInfo,
-    pub token: String,
+    /// SHA-256 of the phone's bearer token; the token itself is never stored.
+    pub token_hash: String,
     pub last_seen: Instant,
     pub last_seen_ms: i64,
     pub paired_ms: i64,
@@ -155,6 +160,7 @@ pub struct State {
     pub server: ServerStatus,
     pub pairing: Pairing,
     pub devices: BTreeMap<String, DeviceConn>,
+    /// token hash → device id
     pub tokens: HashMap<String, String>,
     pub source_id: Option<String>,
     pub target_id: Option<String>,
@@ -184,6 +190,75 @@ pub fn random_token(bytes: usize) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf)
 }
 
+/// Tokens are 32 random bytes, so a plain SHA-256 is enough: there is nothing to brute-force.
+pub fn token_hash(token: &str) -> String {
+    hex::encode(Sha256::digest(token.as_bytes()))
+}
+
+/// One paired phone as kept in `devices.json`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SavedDevice {
+    info: DeviceInfo,
+    token_sha256: String,
+    paired_ms: i64,
+    last_seen_ms: i64,
+    via_usb: bool,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SavedDevices {
+    version: u32,
+    devices: Vec<SavedDevice>,
+    source_id: Option<String>,
+    target_id: Option<String>,
+}
+
+impl DeviceConn {
+    fn new(info: DeviceInfo, token_hash: String, paired_ms: i64, last_seen_ms: i64, via_usb: bool, connected: bool) -> Self {
+        DeviceConn {
+            info,
+            token_hash,
+            last_seen: Instant::now(),
+            last_seen_ms,
+            paired_ms,
+            connected,
+            via_usb,
+            app_state: "foreground".into(),
+            instance_id: None,
+            role: Role::None,
+            commands: VecDeque::new(),
+            next_seq: 1,
+            cmd_tx: watch::channel(0).0,
+            inventory: BTreeMap::new(),
+            scanning: BTreeSet::new(),
+        }
+    }
+}
+
+/// Restores paired phones as offline; they reconnect with their saved token on the next heartbeat.
+fn load_devices(path: &Path, state: &mut State) {
+    let Some(saved) = std::fs::read(path).ok().and_then(|b| serde_json::from_slice::<SavedDevices>(&b).ok()) else {
+        return;
+    };
+    for d in saved.devices.into_iter().take(MAX_DEVICES) {
+        let info = d.info.sanitized();
+        let valid_hash = d.token_sha256.len() == 64 && d.token_sha256.bytes().all(|b| b.is_ascii_hexdigit());
+        if info.id.is_empty() || !valid_hash || state.devices.contains_key(&info.id) {
+            continue;
+        }
+        state.tokens.insert(d.token_sha256.clone(), info.id.clone());
+        let id = info.id.clone();
+        state.devices.insert(id, DeviceConn::new(info, d.token_sha256, d.paired_ms, d.last_seen_ms, d.via_usb, false));
+    }
+    let known = |id: &Option<String>| id.clone().filter(|i| state.devices.contains_key(i));
+    let (source, target) = (known(&saved.source_id), known(&saved.target_id));
+    state.source_id = source;
+    state.target_id = target.filter(|t| state.source_id.as_ref() != Some(t));
+    state.sync_roles();
+}
+
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
@@ -203,6 +278,7 @@ impl Core {
                 state.saved_session = Some(s);
             }
         }
+        load_devices(&paths.devices_file, &mut state);
         Core {
             state: Mutex::new(state),
             ui_tx: watch::channel(0).0,
@@ -270,6 +346,30 @@ impl Core {
     pub fn refresh_hosts(&self) {
         let hosts = crate::net::lan_hosts();
         self.mutate(|st| st.server.hosts = hosts);
+    }
+
+    /// Writes the paired phones to disk. Called on pairing, unpairing and role changes; a failure
+    /// only costs re-pairing after a restart, so it is logged and not reported.
+    fn save_devices(&self, st: &State) {
+        let saved = SavedDevices {
+            version: 1,
+            devices: st
+                .devices
+                .values()
+                .map(|d| SavedDevice {
+                    info: d.info.clone(),
+                    token_sha256: d.token_hash.clone(),
+                    paired_ms: d.paired_ms,
+                    last_seen_ms: d.last_seen_ms,
+                    via_usb: d.via_usb,
+                })
+                .collect(),
+            source_id: st.source_id.clone(),
+            target_id: st.target_id.clone(),
+        };
+        if let Err(e) = crate::persist::write_json_atomic(&self.paths.devices_file, &saved) {
+            tracing::warn!(error = %e, "could not save paired devices");
+        }
     }
 
     // --------------------------------------------------------------- pairing
@@ -401,32 +501,15 @@ impl Core {
             if !replacing && st.devices.len() >= MAX_DEVICES {
                 return Err(Fault::State("too_many_devices"));
             }
+            // The plain token goes to the phone once (via pair_status); the PC keeps only its hash.
             let token = random_token(32);
+            let hash = token_hash(&token);
             if let Some(old) = st.devices.remove(&req.device.id) {
-                st.tokens.remove(&old.token);
+                st.tokens.remove(&old.token_hash);
             }
-            st.tokens.insert(token.clone(), req.device.id.clone());
+            st.tokens.insert(hash.clone(), req.device.id.clone());
             let now = now_ms();
-            st.devices.insert(
-                req.device.id.clone(),
-                DeviceConn {
-                    info: req.device.clone(),
-                    token: token.clone(),
-                    last_seen: Instant::now(),
-                    last_seen_ms: now,
-                    paired_ms: now,
-                    connected: true,
-                    via_usb: req.via_usb,
-                    app_state: "foreground".into(),
-                    instance_id: None,
-                    role: Role::None,
-                    commands: VecDeque::new(),
-                    next_seq: 1,
-                    cmd_tx: watch::channel(0).0,
-                    inventory: BTreeMap::new(),
-                    scanning: BTreeSet::new(),
-                },
-            );
+            st.devices.insert(req.device.id.clone(), DeviceConn::new(req.device.clone(), hash, now, now, req.via_usb, true));
             let r = &mut st.pairing.requests[idx];
             r.status = PairStatus::Approved;
             r.token = Some(token);
@@ -442,13 +525,14 @@ impl Core {
                 }
             }
             st.sync_roles();
+            self.save_devices(st);
             Ok(())
         })
     }
 
     pub fn authenticate(&self, token: &str) -> FResult<String> {
         let mut st = self.lock();
-        let id = st.tokens.get(token).cloned().ok_or(Fault::Unauthorized)?;
+        let id = st.tokens.get(&token_hash(token)).cloned().ok_or(Fault::Unauthorized)?;
         if let Some(d) = st.devices.get_mut(&id) {
             d.last_seen = Instant::now();
             d.last_seen_ms = now_ms();
@@ -537,6 +621,7 @@ impl Core {
             st.source_id = source;
             st.target_id = target;
             st.sync_roles();
+            self.save_devices(st);
             Ok(())
         })
     }
@@ -558,7 +643,7 @@ impl Core {
                 }
             }
             let d = st.devices.remove(device_id).ok_or(Fault::NotFound)?;
-            st.tokens.remove(&d.token);
+            st.tokens.remove(&d.token_hash);
             if st.source_id.as_deref() == Some(device_id) {
                 st.source_id = None;
             }
@@ -567,6 +652,7 @@ impl Core {
             }
             // Wake its long-poll so the phone learns the token is gone.
             d.cmd_tx.send_modify(|v| *v += 1);
+            self.save_devices(st);
             Ok(())
         })
     }
@@ -577,8 +663,18 @@ impl Core {
         let deadline = tokio::time::Instant::now() + wait;
         loop {
             let mut rx = {
-                let st = self.lock();
-                let d = st.devices.get(device_id).ok_or(Fault::Unauthorized)?;
+                let mut st = self.lock();
+                let d = st.devices.get_mut(device_id).ok_or(Fault::Unauthorized)?;
+                // The phone remembers the last command number across restarts of the PC app, which
+                // numbers from 1 again: continue after the phone's number instead of going unseen.
+                if after >= d.next_seq {
+                    let mut seq = after + 1;
+                    for c in d.commands.iter_mut() {
+                        c.seq = seq;
+                        seq += 1;
+                    }
+                    d.next_seq = seq;
+                }
                 let pending: Vec<Command> = d.commands.iter().filter(|c| c.seq > after).cloned().collect();
                 if !pending.is_empty() {
                     return Ok(pending);
@@ -839,6 +935,69 @@ mod tests {
         let (pid, _) = core.handle_pair(&secret, device("a", Platform::Android), false).unwrap();
         core.respond_pairing(&pid, false).unwrap();
         assert_eq!(core.pair_status(&pid).unwrap(), (PairStatus::Denied, None));
+        assert!(core.lock().devices.is_empty());
+    }
+
+    fn pair(core: &Core, id: &str) -> String {
+        let info = core.start_pairing();
+        let secret = info.uri.split("&s=").nth(1).unwrap().split('&').next().unwrap().to_string();
+        let (pid, _) = core.handle_pair(&secret, device(id, Platform::Android), false).unwrap();
+        core.respond_pairing(&pid, true).unwrap();
+        core.pair_status(&pid).unwrap().1.unwrap()
+    }
+
+    fn restart(core: Core) -> Core {
+        Core::new(core.paths.clone(), "PC".into())
+    }
+
+    #[test]
+    fn paired_phones_survive_a_restart_without_storing_tokens() {
+        let (core, _d) = test_core();
+        let (ta, tb) = (pair(&core, "a"), pair(&core, "b"));
+        core.swap_roles().unwrap();
+        let file = std::fs::read_to_string(&core.paths.devices_file).unwrap();
+        assert!(!file.contains(&ta) && !file.contains(&tb), "plain tokens must not reach the disk");
+        assert!(file.contains(&token_hash(&ta)));
+
+        let core = restart(core);
+        assert_eq!(core.authenticate(&ta).unwrap(), "a");
+        assert_eq!(core.authenticate(&tb).unwrap(), "b");
+        assert!(matches!(core.authenticate("not-a-token"), Err(Fault::Unauthorized)));
+        let st = core.lock();
+        assert!(!st.devices["a"].connected, "offline until the phone checks in");
+        assert_eq!((st.source_id.as_deref(), st.target_id.as_deref()), (Some("b"), Some("a")));
+        assert_eq!(st.devices["a"].role, Role::Target);
+    }
+
+    #[test]
+    fn unpaired_phone_stays_forgotten_after_a_restart() {
+        let (core, _d) = test_core();
+        let token = pair(&core, "a");
+        core.unpair("a").unwrap();
+        let core = restart(core);
+        assert!(matches!(core.authenticate(&token), Err(Fault::Unauthorized)));
+        assert!(core.lock().devices.is_empty());
+    }
+
+    #[tokio::test]
+    async fn command_numbers_continue_after_a_restart() {
+        let (core, _d) = test_core();
+        pair(&core, "a");
+        let core = restart(core);
+        // The phone saw commands up to 57 before the PC app restarted.
+        let cmds = core.wait_commands("a", 57, Duration::from_millis(10)).await.unwrap();
+        assert_eq!(cmds.len(), 1);
+        assert_eq!((cmds[0].kind.as_str(), cmds[0].seq), ("role", 58));
+        core.lock().push("a", "scan", serde_json::json!({}));
+        let next = core.wait_commands("a", 58, Duration::from_millis(10)).await.unwrap();
+        assert_eq!(next[0].seq, 59);
+    }
+
+    #[test]
+    fn damaged_devices_file_is_ignored() {
+        let (core, _d) = test_core();
+        std::fs::write(&core.paths.devices_file, b"{ not json").unwrap();
+        let core = restart(core);
         assert!(core.lock().devices.is_empty());
     }
 

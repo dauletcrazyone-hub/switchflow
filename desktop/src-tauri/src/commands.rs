@@ -197,5 +197,7 @@ pub fn reset_identity(app: AppHandle, core: Core_<'_>) -> FResult<()> {
         return Err(Fault::State("session_active"));
     }
     crate::tls::reset(&core.paths.tls_dir)?;
+    // Phones pinned the old certificate: their pairings are useless now.
+    let _ = std::fs::remove_file(&core.paths.devices_file);
     app.restart();
 }
