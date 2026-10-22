@@ -1,0 +1,6 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": { "windows/drivers/UsbDk_x64.msi": "drivers/UsbDk_x64.msi" }
+  }
+}

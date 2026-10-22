@@ -10,7 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
+    "tauri:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/windows/fetch-usbdk.ps1 && tauri dev",
     "tauri:build": "powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/windows/fetch-usbdk.ps1 && tauri build"
   },
   "dependencies": {

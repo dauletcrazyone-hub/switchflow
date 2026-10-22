@@ -36,7 +36,6 @@
     "publisher": "SwitchFlow",
     "copyright": "© 2026 SwitchFlow",
     "category": "Utility",
-    "resources": { "windows/drivers/UsbDk_x64.msi": "drivers/UsbDk_x64.msi" },
     "shortDescription": "Перенос данных между телефонами",
     "longDescription": "SwitchFlow переносит фото, видео, контакты, календари и файлы между Android и iPhone локально и с шифрованием.",
     "icon": [
