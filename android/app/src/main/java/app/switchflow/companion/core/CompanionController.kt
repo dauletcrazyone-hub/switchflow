@@ -171,7 +171,8 @@ class CompanionController(private val app: Context) {
         while (scope.isActive) {
             try {
                 val r = client.heartbeat(DeviceEnv.heartbeat(app, foreground))
-                _state.update { it.copy(phase = Phase.Connected, role = r.role) }
+                _state.update { it.copy(phase = Phase.Connected) }
+                onRole(r.role)
             } catch (e: ApiException) {
                 if (e.status == 401) return forget(Message.Forgotten)
             } catch (e: IOException) {
@@ -206,7 +207,7 @@ class CompanionController(private val app: Context) {
 
     private fun handle(c: Command) {
         when (c.type) {
-            "role" -> _state.update { it.copy(role = decode<RoleCommand>(c.payload).role) }
+            "role" -> onRole(decode<RoleCommand>(c.payload).role)
             "scan" -> scope.launch { scan(decode<ScanCommand>(c.payload).categories) }
             "prepare" -> scope.launch { prepare(decode(c.payload)) }
             "upload" -> enqueueUploads(decode(c.payload))
@@ -245,6 +246,15 @@ class CompanionController(private val app: Context) {
         _state.value.documentsAsk?.complete(uris)
     }
 
+    /**
+     * Only the source phone picks documents. A pick still waiting when the phone becomes the
+     * receiver (direction swapped on the PC) is dropped instead of keeping a stale card on screen.
+     */
+    private fun onRole(role: String) {
+        _state.update { it.copy(role = role) }
+        if (role == "target") _state.value.documentsAsk?.complete(emptyList())
+    }
+
     // -------------------------------------------------------------- source
 
     /** Scans run one after another so prompts and the document picker never overlap. */
@@ -256,7 +266,7 @@ class CompanionController(private val app: Context) {
         val client = api ?: return
         val cats = categories.filter { it in Category.ALL }
         ask(cats.flatMap { CategoryPermissions.requestSet(it) }, cats, write = false)
-        if (Category.DOCUMENTS in cats) {
+        if (Category.DOCUMENTS in cats && _state.value.role != "target") {
             val pick = CompletableDeferred<List<Uri>>()
             _state.update { it.copy(documentsAsk = pick) }
             if (!foreground) TransferService.notifyAttention(app)

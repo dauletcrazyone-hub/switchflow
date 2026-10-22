@@ -3,7 +3,7 @@
 ## Требования
 - JDK 17 (например, Eclipse Temurin 17).
 - Android SDK: Platform 35, Build-Tools 35.0.0, Platform-Tools. Проще всего — Android Studio.
-- Телефон с Android 10 или новее.
+- Телефон с Android 9 или новее (проверено на Android 9, 11 и 16).
 
 Укажите путь к SDK в `android/local.properties` (файл не коммитится):
 

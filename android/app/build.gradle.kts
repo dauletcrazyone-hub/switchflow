@@ -12,7 +12,7 @@ android {
     defaultConfig {
         applicationId = "app.switchflow.companion"
         // MediaStore RELATIVE_PATH / IS_PENDING and scoped storage need Android 10.
-        minSdk = 29
+        minSdk = 28
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"

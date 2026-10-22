@@ -9,6 +9,9 @@ class DeviceNamesTest {
     fun samsungCodesBecomeMarketingNames() {
         // The phone this was found on: SM-A256E whose user-set name is "Galaxy s23".
         assertEquals("Galaxy A25 5G", DeviceNames.marketingName("samsung", "SM-A256E"))
+        // Two-phone test: Galaxy A10 (Android 9) showed up on the PC as "SM-A105F".
+        assertEquals("Galaxy A10", DeviceNames.marketingName("samsung", "SM-A105F"))
+        assertEquals("Galaxy S22", DeviceNames.marketingName("samsung", "SM-S901B"))
         assertEquals("Galaxy A20s", DeviceNames.marketingName("samsung", "SM-A207F"))
         assertEquals("Galaxy S23", DeviceNames.marketingName("Samsung", "SM-S911B"))
     }

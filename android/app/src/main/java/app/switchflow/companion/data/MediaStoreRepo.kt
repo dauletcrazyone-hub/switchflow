@@ -4,12 +4,17 @@ import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
+import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import app.switchflow.companion.net.Album
 import app.switchflow.companion.net.Category
 import app.switchflow.companion.net.SourceItem
+import java.io.File
+import java.io.IOException
 import java.io.OutputStream
 
 /** Reads the phone's media library and saves received media through MediaStore. */
@@ -18,14 +23,27 @@ class MediaStoreRepo(private val context: Context) {
 
     data class Listing(val items: List<SourceItem>, val uris: Map<String, Uri>, val albums: List<Album>)
 
-    private fun collection(category: String): Uri = when (category) {
+    /**
+     * Android 9 has no RELATIVE_PATH / IS_PENDING / Downloads collection: received files are written
+     * to their public folder by path (WRITE_EXTERNAL_STORAGE) and registered in MediaStore by DATA.
+     */
+    private val legacy = Build.VERSION.SDK_INT < 29
+
+    private fun legacyCollection(category: String): Uri = when (category) {
+        Category.PHOTOS -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        Category.VIDEOS -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        Category.MUSIC -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        else -> MediaStore.Files.getContentUri("external")
+    }
+
+    private fun collection(category: String): Uri = if (legacy) legacyCollection(category) else when (category) {
         Category.PHOTOS -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
         Category.VIDEOS -> MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
         Category.MUSIC -> MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
         else -> MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL)
     }
 
-    private fun writeCollection(category: String): Uri = when (category) {
+    private fun writeCollection(category: String): Uri = if (legacy) legacyCollection(category) else when (category) {
         Category.PHOTOS -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         Category.VIDEOS -> MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         Category.MUSIC -> MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
@@ -113,6 +131,7 @@ class MediaStoreRepo(private val context: Context) {
 
     fun createPending(category: String, name: String, mime: String, createdMs: Long?, album: String?): PendingEntry {
         val safeMime = sanitizeMime(category, mime, name)
+        if (legacy) return createLegacy(category, name, safeMime, createdMs, album)
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, safeMime)
@@ -122,16 +141,64 @@ class MediaStoreRepo(private val context: Context) {
                 put(MediaStore.MediaColumns.DATE_TAKEN, createdMs)
             }
         }
-        val uri = resolver.insert(writeCollection(category), values) ?: throw java.io.IOException("MediaStore insert failed")
+        val uri = resolver.insert(writeCollection(category), values) ?: throw IOException("MediaStore insert failed")
         val out = resolver.openOutputStream(uri, "w") ?: run {
             resolver.delete(uri, null, null)
-            throw java.io.IOException("cannot open output")
+            throw IOException("cannot open output")
         }
         return PendingEntry(uri, out)
     }
 
+    @Suppress("DEPRECATION") // DATA and the public storage root are the only way to place files before Android 10
+    private fun legacyFolder(category: String, album: String?) = File(Environment.getExternalStorageDirectory(), relativePath(category, album))
+
+    @Suppress("DEPRECATION")
+    private fun createLegacy(category: String, name: String, mime: String, createdMs: Long?, album: String?): PendingEntry {
+        val dir = legacyFolder(category, album)
+        if (!dir.isDirectory && !dir.mkdirs()) throw IOException("cannot create folder")
+        // Never overwrite: a different file with the same name gets " (1)", " (2)"… like MediaStore does on Android 10+.
+        val file = uniqueFile(dir, name.replace(Regex("""[\\/:*?"<>|]"""), "_"))
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DATA, file.absolutePath)
+            put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+            put(MediaStore.MediaColumns.MIME_TYPE, mime)
+            if (createdMs != null && (category == Category.PHOTOS || category == Category.VIDEOS)) {
+                put(MediaStore.MediaColumns.DATE_TAKEN, createdMs)
+            }
+        }
+        val uri = resolver.insert(writeCollection(category), values) ?: run {
+            file.delete()
+            throw IOException("MediaStore insert failed")
+        }
+        val out = resolver.openOutputStream(uri, "w") ?: run {
+            discard(uri)
+            throw IOException("cannot open output")
+        }
+        return PendingEntry(uri, out)
+    }
+
+    private fun uniqueFile(dir: File, name: String): File {
+        val dot = name.lastIndexOf('.')
+        val base = if (dot > 0) name.substring(0, dot) else name
+        val ext = if (dot > 0) name.substring(dot) else ""
+        var candidate = File(dir, name)
+        var n = 1
+        while (!candidate.createNewFile()) candidate = File(dir, "$base (${n++})$ext")
+        return candidate
+    }
+
+    @Suppress("DEPRECATION")
+    private fun legacyPath(uri: Uri): String? = runCatching {
+        resolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+    }.getOrNull()
+
     fun publish(uri: Uri, category: String, createdMs: Long?) {
-        resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+        if (legacy) {
+            // The row exists from the start; a scan fills in size, dimensions and EXIF dates.
+            legacyPath(uri)?.let { MediaScannerConnection.scanFile(context, arrayOf(it), null, null) }
+        } else {
+            resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+        }
         // Publishing re-scans the file and resets DATE_TAKEN from EXIF; files without EXIF dates
         // (screenshots, messenger images) would lose their original date, so try to write it back.
         // Verified on a Galaxy A20s (Android 11): MediaProvider silently ignores this update, so there
@@ -144,7 +211,10 @@ class MediaStoreRepo(private val context: Context) {
     }
 
     fun discard(uri: Uri) {
+        // Only ever called on a file SwitchFlow itself just created and could not verify.
+        val path = if (legacy) legacyPath(uri) else null
         runCatching { resolver.delete(uri, null, null) }
+        path?.let { runCatching { File(it).delete() } }
     }
 
     /** Reads the saved file back from MediaStore and hashes it: proof the bytes landed. */
@@ -157,6 +227,12 @@ class MediaStoreRepo(private val context: Context) {
      * here without broad read permissions, which is exactly the set that can be duplicated.
      */
     fun existsInTarget(category: String, name: String, size: Long, album: String?): Boolean {
+        if (legacy) {
+            @Suppress("DEPRECATION")
+            val sel = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.SIZE} = ? AND ${MediaStore.MediaColumns.DATA} LIKE ?"
+            val args = arrayOf(name, size.toString(), legacyFolder(category, album).absolutePath + "/%")
+            return resolver.query(writeCollection(category), arrayOf(MediaStore.MediaColumns._ID), sel, args, null)?.use { it.count > 0 } ?: false
+        }
         val sel = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.SIZE} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
         val args = arrayOf(name, size.toString(), relativePath(category, album) + "%")
         return resolver.query(writeCollection(category), arrayOf(MediaStore.MediaColumns._ID), sel, args, null)?.use { it.count > 0 } ?: false

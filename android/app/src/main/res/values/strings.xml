@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">SwitchFlow</string>
+    <string name="app_name" translatable="false">SwitchFlow</string>
     <string name="slogan">Your data. Your devices. One seamless move.</string>
     <string name="connect">Connect to computer</string>
     <string name="connect_hint">Open SwitchFlow on your Windows PC, press “Show QR code” and scan it.</string>

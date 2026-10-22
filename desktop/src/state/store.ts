@@ -245,7 +245,7 @@ async function attach(backend: Backend, demo: boolean) {
   useApp.setState({ backend, demo, snapshot: EMPTY_SNAPSHOT });
   unsubscribers.push(
     backend.onSnapshot((snapshot) => {
-      if (useApp.getState().backend === backend) useApp.setState({ snapshot });
+      if (useApp.getState().backend === backend) applySnapshot(snapshot);
     }),
   );
   unsubscribers.push(
@@ -257,9 +257,23 @@ async function attach(backend: Backend, demo: boolean) {
   );
   try {
     const snapshot = await backend.getSnapshot();
-    if (useApp.getState().backend === backend) useApp.setState({ snapshot });
+    if (useApp.getState().backend === backend) applySnapshot(snapshot);
   } catch {
     /* the snapshot event will arrive */
+  }
+}
+
+/**
+ * Album ids belong to the phone that listed them: after a direction swap or a new source phone,
+ * an old choice would match none of the new albums and silently select nothing.
+ */
+export function applySnapshot(snapshot: Snapshot) {
+  const st = useApp.getState();
+  const sourceChanged = snapshot.sourceId !== st.snapshot.sourceId;
+  if (sourceChanged && Object.keys(st.selection.albums).length > 0) {
+    useApp.setState({ snapshot, selection: { ...st.selection, albums: {} } });
+  } else {
+    useApp.setState({ snapshot });
   }
 }
 

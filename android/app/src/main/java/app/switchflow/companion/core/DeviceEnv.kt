@@ -115,11 +115,13 @@ object CategoryPermissions {
         else -> emptyList() // documents use the system file picker
     }
 
-    /** Saving media to MediaStore needs no permission on Android 10+; contacts and calendars do. */
+    /** Saving media to MediaStore needs no permission on Android 10+ (Android 9: storage); contacts and calendars do. */
     fun forWriting(category: String): List<String> = when (category) {
         Category.CONTACTS -> listOf(Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS)
         Category.CALENDARS -> listOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
-        else -> emptyList()
+        else -> if (Build.VERSION.SDK_INT < 29) {
+            listOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else emptyList()
     }
 
     fun granted(context: Context, perms: List<String>) =

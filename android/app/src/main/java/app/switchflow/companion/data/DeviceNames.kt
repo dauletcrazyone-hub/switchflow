@@ -19,6 +19,12 @@ object DeviceNames {
         "SM-A125" to "Galaxy A12", "SM-A127" to "Galaxy A12", "SM-A135" to "Galaxy A13", "SM-A136" to "Galaxy A13 5G",
         "SM-A145" to "Galaxy A14", "SM-A146" to "Galaxy A14 5G", "SM-A155" to "Galaxy A15", "SM-A156" to "Galaxy A15 5G",
         "SM-A165" to "Galaxy A16", "SM-A166" to "Galaxy A16 5G",
+        // 2019–2021 A series, still common as hand-me-down phones (found: SM-A105F, Android 9).
+        "SM-A015" to "Galaxy A01", "SM-A022" to "Galaxy A02", "SM-A025" to "Galaxy A02s", "SM-A035" to "Galaxy A03",
+        "SM-A037" to "Galaxy A03s", "SM-A105" to "Galaxy A10", "SM-A107" to "Galaxy A10s", "SM-A115" to "Galaxy A11",
+        "SM-A205" to "Galaxy A20", "SM-A305" to "Galaxy A30", "SM-A307" to "Galaxy A30s", "SM-A315" to "Galaxy A31",
+        "SM-A405" to "Galaxy A40", "SM-A415" to "Galaxy A41", "SM-A505" to "Galaxy A50", "SM-A507" to "Galaxy A50s",
+        "SM-A705" to "Galaxy A70",
         "SM-A045" to "Galaxy A04", "SM-A047" to "Galaxy A04s", "SM-A055" to "Galaxy A05", "SM-A057" to "Galaxy A05s",
         "SM-A065" to "Galaxy A06", "SM-A207" to "Galaxy A20s", "SM-A217" to "Galaxy A21s",
         "SM-A225" to "Galaxy A22", "SM-A226" to "Galaxy A22 5G", "SM-A235" to "Galaxy A23", "SM-A236" to "Galaxy A23 5G",

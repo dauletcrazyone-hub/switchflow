@@ -100,6 +100,17 @@ export function CategoryPanel({
     }, 500);
   };
 
+  // A new source phone (direction swapped, another phone connected) has not counted the categories
+  // that are still ticked; without asking it, the start button would wait for them forever.
+  const countedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!source.connected || countedFor.current === source.info.id) return;
+    countedFor.current = source.info.id;
+    const missing = rows.filter((r) => r.selected && !r.inventory && !r.scanning).map((r) => r.category);
+    if (missing.length) scan(missing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per source phone
+  }, [source.info.id, source.connected, rows]);
+
   const onToggle = (category: Category, on: boolean) => {
     toggle(category, on);
     const row = rows.find((r) => r.category === category);

@@ -1,5 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CategorySummary, DeviceView } from "../../backend/types";
 import { useApp } from "../../state/store";
 import { CategoryPanel, STALE_SCAN_MS, needsScan } from "./CategoryPanel";
@@ -33,6 +33,22 @@ describe("CategoryPanel", () => {
     expect(useApp.getState().selection.categories).toEqual(["photos"]);
     const start = screen.getByRole("button", { name: /Сохранить на компьютер/ }) as HTMLButtonElement;
     expect(start.disabled).toBe(false);
+  });
+});
+
+describe("CategoryPanel after a direction swap", () => {
+  // Found on a Galaxy S22 ↔ Galaxy A10 test: after "swap direction" the ticked categories were never
+  // counted on the new source, and the start button waited for them forever.
+  it("asks the new source phone to count the categories that are still ticked", async () => {
+    vi.useFakeTimers();
+    const requestScan = vi.fn(async () => undefined);
+    useApp.setState({ backend: { requestScan } as never });
+    const fresh: DeviceView = { ...source, info: { ...source.info, id: "p2", model: "SM-A105F" }, inventory: [] };
+    render(<CategoryPanel source={fresh} targetPlatform={null} onStart={() => undefined} startLabel="Начать перенос" />);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(requestScan).toHaveBeenCalledTimes(1);
+    expect(requestScan).toHaveBeenCalledWith(["photos", "calendars"]);
+    vi.useRealTimers();
   });
 });
 
