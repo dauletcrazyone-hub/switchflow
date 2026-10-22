@@ -141,6 +141,8 @@ const ACCESSORY_DESCRIPTION: &str = "SwitchFlow: перенос данных п�
 const ACCESSORY_VERSION: &str = "1";
 
 const GOOGLE_VID: u16 = 0x18D1;
+/// How long an accessory-mode device must be on the bus before the link opens it.
+const SETTLE: Duration = Duration::from_secs(2);
 /// Accessory, accessory+ADB, and the audio variants.
 const ACCESSORY_PIDS: [u16; 6] = [0x2D00, 0x2D01, 0x2D02, 0x2D03, 0x2D04, 0x2D05];
 /// Phone makers (USB vendor ids). Opening a device through UsbDk briefly takes it away from its
@@ -181,6 +183,13 @@ pub struct Cable {
     linked: Mutex<Vec<(u8, u8)>>,
     /// Android phones seen on USB in normal mode at the last poll.
     phones: AtomicUsize,
+    /// When each accessory-mode device first appeared, to let Windows finish starting it first.
+    first_seen: Mutex<HashMap<(u8, u8), std::time::Instant>>,
+    /// iPhones (usbmuxd device ids) with a running link.
+    linked_iphones: Mutex<Vec<u64>>,
+    /// Keeps accessory-mode phones hidden from Windows drivers while SwitchFlow runs.
+    #[cfg(windows)]
+    _hider: Option<hider::Hider>,
 }
 
 impl Cable {
@@ -189,11 +198,29 @@ impl Cable {
         if ctx.is_none() {
             tracing::info!("cable transfer unavailable: no UsbDk");
         }
-        Arc::new(Cable { ctx, linked: Mutex::new(Vec::new()), phones: AtomicUsize::new(0) })
+        #[cfg(windows)]
+        let _hider = ctx.as_ref().and_then(|_| hider::Hider::accessories());
+        Arc::new(Cable {
+            ctx,
+            linked: Mutex::new(Vec::new()),
+            phones: AtomicUsize::new(0),
+            first_seen: Mutex::default(),
+            linked_iphones: Mutex::default(),
+            #[cfg(windows)]
+            _hider,
+        })
     }
 
     pub fn available(&self) -> bool {
         self.ctx.is_some()
+    }
+
+    /// Accessory-mode phones are hidden from Windows drivers (UsbDk hide rules are active).
+    pub fn hiding(&self) -> bool {
+        #[cfg(windows)]
+        return self._hider.is_some();
+        #[cfg(not(windows))]
+        false
     }
 
     /// Phones that "Connect by cable" would switch (descriptors only: nothing is opened).
@@ -202,7 +229,33 @@ impl Cable {
     }
 
     pub fn links(&self) -> usize {
-        self.linked.lock().unwrap_or_else(|p| p.into_inner()).len()
+        self.linked.lock().unwrap_or_else(|p| p.into_inner()).len() + self.linked_iphones.lock().unwrap_or_else(|p| p.into_inner()).len()
+    }
+
+    /// Links every connected iPhone whose SwitchFlow app is open (it listens while open).
+    /// Needs only usbmuxd (Apple Mobile Device Service), not UsbDk; "Trust this computer" suffices.
+    fn poll_iphones(self: &Arc<Self>, core: &Arc<Core>) {
+        let Ok(devices) = crate::usbmux::list_devices() else { return };
+        for d in devices {
+            if self.linked_iphones.lock().unwrap_or_else(|p| p.into_inner()).contains(&d.id) {
+                continue;
+            }
+            // Refused = the app is closed; asked again at the next poll.
+            let Ok(stream) = crate::usbmux::connect(d.id, crate::usbmux::DEVICE_PORT) else { continue };
+            let Ok(transport) = TcpTransport::new(stream) else { continue };
+            self.linked_iphones.lock().unwrap_or_else(|p| p.into_inner()).push(d.id);
+            let (me, core, id) = (self.clone(), core.clone(), d.id);
+            let spawned = std::thread::Builder::new().name("sf-cable-iphone".into()).spawn(move || {
+                tracing::info!("iPhone cable link open");
+                run_link(Arc::new(transport), &core);
+                tracing::info!("iPhone cable link closed");
+                me.linked_iphones.lock().unwrap_or_else(|p| p.into_inner()).retain(|x| *x != id);
+                core.notify_ui();
+            });
+            if spawned.is_err() {
+                self.linked_iphones.lock().unwrap_or_else(|p| p.into_inner()).retain(|x| *x != id);
+            }
+        }
     }
 
     /// Asks every connected Android phone to switch into accessory mode. Returns how many agreed.
@@ -234,9 +287,11 @@ impl Cable {
     /// Starts a link for every accessory-mode phone that has none yet. Called from discovery.
     pub fn poll(self: &Arc<Self>, core: &Arc<Core>) {
         use rusb::UsbContext;
+        self.poll_iphones(core);
         let Some(ctx) = &self.ctx else { return };
         let Ok(list) = ctx.devices() else { return };
         let mut phones = 0;
+        let mut present = Vec::new();
         for dev in list.iter() {
             let Ok(desc) = dev.device_descriptor() else { continue };
             if !is_accessory(desc.vendor_id(), desc.product_id()) {
@@ -246,6 +301,17 @@ impl Cable {
                 continue;
             }
             let key = (dev.bus_number(), dev.address());
+            present.push(key);
+            // Opening through UsbDk takes the device away from Windows. Doing that while Windows is
+            // still starting it (right after the switch) fails the start with code 10, and the phone
+            // stays unusable until the cable is replugged (seen on a Galaxy S22).
+            let settled = {
+                let mut seen = self.first_seen.lock().unwrap_or_else(|p| p.into_inner());
+                seen.entry(key).or_insert_with(std::time::Instant::now).elapsed() >= SETTLE
+            };
+            if !settled {
+                continue;
+            }
             {
                 let mut linked = self.linked.lock().unwrap_or_else(|p| p.into_inner());
                 if linked.contains(&key) {
@@ -256,9 +322,9 @@ impl Cable {
             let (me, core) = (self.clone(), core.clone());
             let spawned = std::thread::Builder::new().name("sf-cable".into()).spawn(move || {
                 match open_link(&dev) {
-                    Ok((handle, ep_in, ep_out)) => {
+                    Ok((h, ep_in, ep_out)) => {
                         tracing::info!("cable link open");
-                        run_link(Arc::new(handle), ep_in, ep_out, &core);
+                        run_link(Arc::new(UsbTransport { h, ep_in, ep_out }), &core);
                         tracing::info!("cable link closed");
                     }
                     Err(e) => tracing::warn!(error = %e, "cable link failed to open"),
@@ -271,6 +337,69 @@ impl Cable {
             }
         }
         self.phones.store(phones, Ordering::Relaxed);
+        self.first_seen.lock().unwrap_or_else(|p| p.into_inner()).retain(|k, _| present.contains(k));
+    }
+}
+
+/// UsbDk hide rules: a phone in accessory mode is kept away from Windows drivers. Without this,
+/// a driver that claims accessory devices (Samsung's USB driver binds WinUSB to 18D1:2D00) may
+/// fail to start on the phone (code 10, seen with a Galaxy S22) and leave it unusable until the
+/// cable is replugged. The rules live as long as the handle, i.e. while SwitchFlow runs.
+#[cfg(windows)]
+mod hider {
+    use windows::core::{s, w};
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+
+    #[repr(C)]
+    struct HideRule {
+        hide: u64,
+        class: u64,
+        vid: u64,
+        pid: u64,
+        bcd: u64,
+    }
+    const MATCH_ALL: u64 = 0xFFFF_FFFF;
+
+    type CreateFn = unsafe extern "C" fn() -> HANDLE;
+    type AddFn = unsafe extern "C" fn(HANDLE, *const HideRule) -> i32;
+    type CloseFn = unsafe extern "C" fn(HANDLE);
+
+    pub struct Hider {
+        handle: HANDLE,
+        close: CloseFn,
+    }
+
+    // The handle is only passed back to UsbDk on drop.
+    unsafe impl Send for Hider {}
+    unsafe impl Sync for Hider {}
+
+    impl Hider {
+        pub fn accessories() -> Option<Hider> {
+            unsafe {
+                let lib = LoadLibraryW(w!("UsbDkHelper.dll")).ok()?;
+                let create: CreateFn = std::mem::transmute(GetProcAddress(lib, s!("UsbDk_CreateHiderHandle"))?);
+                let add: AddFn = std::mem::transmute(GetProcAddress(lib, s!("UsbDk_AddHideRule"))?);
+                let close: CloseFn = std::mem::transmute(GetProcAddress(lib, s!("UsbDk_CloseHiderHandle"))?);
+                let handle = create();
+                if handle.is_invalid() || handle.0.is_null() {
+                    return None;
+                }
+                for pid in super::ACCESSORY_PIDS {
+                    let rule = HideRule { hide: 1, class: MATCH_ALL, vid: super::GOOGLE_VID as u64, pid: pid as u64, bcd: MATCH_ALL };
+                    if add(handle, &rule) == 0 {
+                        tracing::warn!("UsbDk did not accept a hide rule");
+                    }
+                }
+                Some(Hider { handle, close })
+            }
+        }
+    }
+
+    impl Drop for Hider {
+        fn drop(&mut self) {
+            unsafe { (self.close)(self.handle) }
+        }
     }
 }
 
@@ -290,15 +419,24 @@ fn open_context() -> Option<rusb::Context> {
     }
 }
 
-/// MTP / PTP ("File transfer" / "Photos") or a vendor interface: what a phone exposes on USB.
+/// A USB interface a phone exposes in one of its USB modes ("File transfer", "Photos", "MIDI",
+/// "USB tethering") or with USB debugging. Together with the maker's vendor id this tells a phone
+/// apart from the same maker's disks, monitors or keyboards (mass storage, hub, HID are never matched).
+pub fn is_phone_interface(class: u8, subclass: u8, protocol: u8) -> bool {
+    matches!(
+        (class, subclass, protocol),
+        (0x06, 0x01, 0x01)          // MTP / PTP
+            | (0xFF, 0xFF, 0x00)    // MTP with Microsoft OS descriptors
+            | (0xFF, 0x42, 0x01)    // ADB
+            | (0x01, 0x03, _)       // MIDI streaming
+            | (0xE0, 0x01, 0x03)    // RNDIS (USB tethering)
+            | (0xEF, 0x04, 0x01)    // RNDIS, misc-class variant
+    )
+}
+
 fn has_phone_interface(dev: &rusb::Device<rusb::Context>) -> bool {
     let Ok(cfg) = dev.active_config_descriptor().or_else(|_| dev.config_descriptor(0)) else { return false };
-    cfg.interfaces().any(|i| {
-        i.descriptors().any(|d| {
-            let (c, s, p) = (d.class_code(), d.sub_class_code(), d.protocol_code());
-            (c == 0x06 && s == 0x01 && p == 0x01) || (c == 0xFF && s == 0xFF && p == 0x00)
-        })
-    })
+    cfg.interfaces().any(|i| i.descriptors().any(|d| is_phone_interface(d.class_code(), d.sub_class_code(), d.protocol_code())))
 }
 
 fn switch_to_accessory(dev: &rusb::Device<rusb::Context>) -> rusb::Result<u16> {
@@ -342,16 +480,76 @@ fn open_link(dev: &rusb::Device<rusb::Context>) -> rusb::Result<(rusb::DeviceHan
     Ok((h, ep_in.ok_or(rusb::Error::NotFound)?, ep_out.ok_or(rusb::Error::NotFound)?))
 }
 
-type Handle = Arc<rusb::DeviceHandle<rusb::Context>>;
+/// What a read from the cable gave.
+pub enum ReadResult {
+    Data(usize),
+    /// Nothing within the read timeout.
+    Idle,
+    /// Failed, but the device is still there (the app has not opened the accessory yet).
+    Retry,
+    /// Unplugged or closed.
+    Gone,
+}
+
+/// The cable underneath a link: Android accessory bulk endpoints, or a TCP stream to an iPhone app.
+pub trait Transport: Send + Sync {
+    fn read(&self, buf: &mut [u8]) -> ReadResult;
+    fn write(&self, frame: &[u8]) -> bool;
+}
+
+struct UsbTransport {
+    h: rusb::DeviceHandle<rusb::Context>,
+    ep_in: u8,
+    ep_out: u8,
+}
+
+impl Transport for UsbTransport {
+    fn read(&self, buf: &mut [u8]) -> ReadResult {
+        match self.h.read_bulk(self.ep_in, buf, Duration::from_secs(1)) {
+            Ok(n) => ReadResult::Data(n),
+            Err(rusb::Error::Timeout) => ReadResult::Idle,
+            Err(rusb::Error::NoDevice) => ReadResult::Gone,
+            Err(_) => ReadResult::Retry,
+        }
+    }
+    fn write(&self, frame: &[u8]) -> bool {
+        self.h.write_bulk(self.ep_out, frame, Duration::from_secs(10)).is_ok_and(|n| n == frame.len())
+    }
+}
+
+/// A TCP stream to the iPhone app (through usbmuxd), or to the simulator in the cloud test.
+pub struct TcpTransport(TcpStream);
+
+impl TcpTransport {
+    pub fn new(stream: TcpStream) -> std::io::Result<TcpTransport> {
+        stream.set_read_timeout(Some(Duration::from_secs(1)))?;
+        stream.set_nodelay(true)?;
+        Ok(TcpTransport(stream))
+    }
+}
+
+impl Transport for TcpTransport {
+    fn read(&self, buf: &mut [u8]) -> ReadResult {
+        match (&self.0).read(buf) {
+            Ok(0) => ReadResult::Gone,
+            Ok(n) => ReadResult::Data(n),
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => ReadResult::Idle,
+            Err(_) => ReadResult::Gone,
+        }
+    }
+    fn write(&self, frame: &[u8]) -> bool {
+        (&self.0).write_all(frame).is_ok()
+    }
+}
 
 /// Carries the phone's TCP streams to the local SwitchFlow server until the cable goes away.
-fn run_link(h: Handle, ep_in: u8, ep_out: u8, core: &Arc<Core>) {
+pub fn run_link(t: Arc<dyn Transport>, core: &Arc<Core>) {
     let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(64);
     let writer = {
-        let h = h.clone();
+        let t = t.clone();
         std::thread::Builder::new().name("sf-cable-write".into()).spawn(move || {
             for frame in rx {
-                if h.write_bulk(ep_out, &frame, Duration::from_secs(10)).map(|n| n != frame.len()).unwrap_or(true) {
+                if !t.write(&frame) {
                     break;
                 }
             }
@@ -370,16 +568,16 @@ fn run_link(h: Handle, ep_in: u8, ep_out: u8, core: &Arc<Core>) {
     let mut ready = false;
     let waiting_since = std::time::Instant::now();
     'link: loop {
-        let n = match h.read_bulk(ep_in, &mut buf, Duration::from_secs(1)) {
-            Ok(n) => n,
-            Err(rusb::Error::Timeout) => continue,
-            Err(rusb::Error::NoDevice) => break, // unplugged
-            Err(_) if !ready && waiting_since.elapsed() < Duration::from_secs(120) => {
+        let n = match t.read(&mut buf) {
+            ReadResult::Data(n) => n,
+            ReadResult::Idle => continue,
+            ReadResult::Gone => break,
+            ReadResult::Retry if !ready && waiting_since.elapsed() < Duration::from_secs(120) => {
                 std::thread::sleep(Duration::from_millis(300));
                 continue;
             }
-            Err(e) => {
-                tracing::info!(error = %e, "cable link read failed");
+            ReadResult::Retry => {
+                tracing::info!("cable link read failed");
                 break;
             }
         };
@@ -511,6 +709,20 @@ mod tests {
             let f = control_frame(Kind::Hello, 0, &vec![b'x'; len]);
             assert_ne!(f.len() % 64, 0);
         }
+    }
+
+    #[test]
+    fn only_phone_interfaces_are_matched() {
+        let any = |set: &[(u8, u8, u8)]| set.iter().any(|&(c, s, p)| is_phone_interface(c, s, p));
+        // Interface sets seen on this project's test PC.
+        assert!(any(&[(0x06, 0x01, 0x01), (0x02, 0x02, 0x01), (0x0A, 0x00, 0x00), (0xFF, 0x42, 0x01)]), "Galaxy S22/A10, file transfer");
+        assert!(any(&[(0x01, 0x01, 0x00), (0x01, 0x03, 0x00)]), "Galaxy S22 after replug: MIDI mode");
+        assert!(any(&[(0xE0, 0x01, 0x03), (0x0A, 0x00, 0x00)]), "USB tethering");
+        assert!(!any(&[(0x03, 0x01, 0x02)]), "mouse");
+        assert!(!any(&[(0x0E, 0x01, 0x01), (0x0E, 0x02, 0x01), (0xFE, 0x01, 0x01)]), "webcam");
+        assert!(!any(&[(0xE0, 0x01, 0x01)]), "Bluetooth adapter");
+        assert!(!any(&[(0x08, 0x06, 0x50), (0x08, 0x06, 0x62)]), "Samsung portable SSD: mass storage / UAS");
+        assert!(!any(&[(0x09, 0x00, 0x00)]), "hub in a monitor");
     }
 
     #[test]

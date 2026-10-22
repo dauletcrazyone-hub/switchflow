@@ -60,6 +60,7 @@ final class CompanionController: ObservableObject {
     private var documentsContinuation: CheckedContinuation<[URL], Never>?
 
     func start() {
+        startCable()
         #if DEBUG
         // Test hook for the cloud end-to-end test: the simulator has no camera, so the QR content
         // arrives as a launch argument (-SFPairingURI "switchflow://pair?..."). Release builds ignore it.
@@ -142,6 +143,60 @@ final class CompanionController: ObservableObject {
         }
     }
 
+    // MARK: Cable
+
+    private let cable = CableLink()
+    /// Where the PC is reachable without the cable (from its HELLO), to fall back on unplug.
+    private var cableHosts: [String] = []
+    private var cableServerPort = 0
+    private static let loopback = "127.0.0.1"
+
+    private func startCable() {
+        cable.start(
+            onHello: { [weak self] uri in Task { @MainActor in await self?.onCableHello(uri) } },
+            onClosed: { [weak self] in Task { @MainActor in await self?.onCableClosed() } }
+        )
+    }
+
+    /// The app came to the foreground: make sure the PC can reach it over the cable again.
+    func becameActive() { cable.resume() }
+
+    /// The cable carries what the QR code carries: pair without the camera, or reuse the pairing.
+    private func onCableHello(_ raw: String) async {
+        guard let t = PairingURI.parse(raw) else { return }
+        cableHosts = t.hosts.filter { $0 != Self.loopback }
+        cableServerPort = t.port
+        let port = Int(CableLink.localPort)
+        if let saved = Store.pairing, saved.fingerprint == t.fingerprint {
+            let p = SavedPairing(host: Self.loopback, port: port, fingerprint: saved.fingerprint, token: saved.token, desktopName: saved.desktopName)
+            Store.pairing = p
+            connect(p)
+        } else {
+            await pair(PairingTarget(hosts: [Self.loopback], port: port, fingerprint: t.fingerprint, secret: t.secret, desktopName: t.desktopName))
+        }
+    }
+
+    /// Unplugged: carry on over Wi-Fi when the PC is reachable there; otherwise wait for the cable.
+    private func onCableClosed() async {
+        guard let saved = Store.pairing, saved.host == Self.loopback, saved.port == Int(CableLink.localPort), !cableHosts.isEmpty else { return }
+        let target = PairingTarget(hosts: cableHosts, port: cableServerPort, fingerprint: saved.fingerprint, secret: "", desktopName: saved.desktopName)
+        guard let found = await reachable(target) else { return }
+        let p = SavedPairing(host: found.1, port: cableServerPort, fingerprint: saved.fingerprint, token: saved.token, desktopName: saved.desktopName)
+        Store.pairing = p
+        connect(p)
+    }
+
+    /// Only the source phone picks documents; a pick still waiting when the phone becomes the
+    /// receiver (direction swapped on the PC) is dropped instead of keeping a stale card on screen.
+    private func setRole(_ r: String) {
+        role = r
+        if r == "target", let pending = documentsContinuation {
+            documentsContinuation = nil
+            askingDocuments = false
+            pending.resume(returning: [])
+        }
+    }
+
     // MARK: Connection
 
     private func connect(_ p: SavedPairing) {
@@ -163,7 +218,7 @@ final class CompanionController: ObservableObject {
         while !Task.isCancelled {
             do {
                 let r = try await client.heartbeat(DeviceEnv.heartbeat(foreground: foreground))
-                role = r.role
+                setRole(r.role)
                 phase = .connected
             } catch let e as APIError where e.status == 401 {
                 forget(.forgotten); return
@@ -194,7 +249,7 @@ final class CompanionController: ObservableObject {
 
     private func handle(_ c: Command) {
         switch c.type {
-        case "role": role = (try? c.decode(RoleCommand.self).role) ?? role
+        case "role": setRole((try? c.decode(RoleCommand.self).role) ?? role)
         case "scan": if let cmd = try? c.decode(ScanCommand.self) { serially { await self.scan(cmd.categories) } }
         case "prepare": if let cmd = try? c.decode(PrepareCommand.self) { serially { await self.prepare(cmd) } }
         case "upload": if let cmd = try? c.decode(UploadCommand.self) { enqueue(cmd) }
@@ -252,7 +307,7 @@ final class CompanionController: ObservableObject {
         var states: [String: String] = [:]
         for c in cats { states[c] = await authorize(c, write: false) }
         sfLog.info("scan permissions: \(states.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ","), privacy: .public)")
-        if cats.contains(Category.documents) {
+        if cats.contains(Category.documents), role != "target" {
             askingDocuments = true
             let urls = await withCheckedContinuation { documentsContinuation = $0 }
             await catalog.setPicked(urls)

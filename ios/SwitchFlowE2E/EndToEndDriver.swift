@@ -17,14 +17,17 @@ final class EndToEndDriver: XCTestCase {
 
     func testTransferWithRealCore() throws {
         let env = ProcessInfo.processInfo.environment
-        guard let uri = env["SF_PAIRING_URI"], !uri.isEmpty else {
-            throw XCTSkip("Runs only inside the cloud end-to-end job (SF_PAIRING_URI is not set).")
+        let uri = env["SF_PAIRING_URI"] ?? ""
+        // Cable mode: the app gets no pairing code; the PC side sends it over the cable link.
+        let cable = env["SF_CABLE"] == "1"
+        guard !uri.isEmpty || cable else {
+            throw XCTSkip("Runs only inside the cloud end-to-end job (SF_PAIRING_URI / SF_CABLE are not set).")
         }
         let doneFile = env["SF_DONE_FILE"]
         let timeout = env["SF_TIMEOUT"].flatMap(Double.init) ?? 1500
 
         let app = XCUIApplication()
-        app.launchArguments = ["-SFPairingURI", uri, "-SFSkipAccessCard", "YES",
+        app.launchArguments = (cable ? [] : ["-SFPairingURI", uri]) + ["-SFSkipAccessCard", "YES",
                                "-AppleLanguages", "(ru)", "-AppleLocale", "ru_RU"]
         app.launch()
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")

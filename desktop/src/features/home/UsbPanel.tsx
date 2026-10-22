@@ -22,7 +22,7 @@ function describe(d: UsbDevice, t: ReturnType<typeof useT>) {
     default:
       return {
         title: d.platform === "ios" ? t("usb.iphoneDetected") : t("usb.detected", { model: d.model || "Android" }),
-        hint: t("usb.openCompanion"),
+        hint: d.platform === "ios" ? t("usb.iphoneCable") : t("usb.openCompanion"),
         warn: false,
       };
   }

@@ -57,6 +57,7 @@ const ru = {
     title: "Обнаружено по USB",
     detected: "{model} обнаружен",
     iphoneDetected: "iPhone обнаружен",
+    iphoneCable: "Откройте SwitchFlow на iPhone — он подключится по кабелю сам, без QR-кода. Нужно только нажать «Доверять этому компьютеру».",
     openCompanion: "Откройте SwitchFlow на телефоне и отсканируйте QR-код, чтобы начать.",
     driverMissing: "iPhone подключён, но драйвер Apple не установлен",
     driverMissingHint: "Установите приложение «Apple Devices» из Microsoft Store и подключите кабель заново.",

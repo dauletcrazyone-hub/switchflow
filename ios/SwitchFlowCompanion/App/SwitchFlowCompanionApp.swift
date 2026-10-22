@@ -12,6 +12,7 @@ struct SwitchFlowCompanionApp: App {
                 .task { controller.start() }
                 .onChange(of: scenePhase) { phase in
                     controller.foreground = phase == .active
+                    if phase == .active { controller.becameActive() }
                 }
         }
     }

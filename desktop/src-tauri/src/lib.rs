@@ -20,6 +20,7 @@ pub mod settings;
 pub mod snapshot;
 pub mod storage;
 pub mod tls;
+pub mod usbmux;
 
 use std::sync::Arc;
 use std::time::Duration;

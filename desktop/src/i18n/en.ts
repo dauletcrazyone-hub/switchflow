@@ -49,6 +49,7 @@ const en: Dictionary = {
     title: "Detected over USB",
     detected: "{model} detected",
     iphoneDetected: "iPhone detected",
+    iphoneCable: "Open SwitchFlow on the iPhone — it connects over the cable by itself, no QR code. Just tap “Trust This Computer”.",
     openCompanion: "Open SwitchFlow on the phone and scan the QR code to begin.",
     driverMissing: "iPhone is connected, but Apple’s driver is not installed",
     driverMissingHint: "Install the “Apple Devices” app from the Microsoft Store and reconnect the cable.",

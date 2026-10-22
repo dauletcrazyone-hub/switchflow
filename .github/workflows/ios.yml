@@ -135,9 +135,16 @@ jobs:
 
   # The iOS app in the simulator talks to the real SwitchFlow core (the same Rust code as the
   # Windows app) over real TLS on this Mac: iPhone → PC backup, PC → iPhone restore, repeat restore.
+  # mode qr:    the app gets the QR code's content, as when scanning it;
+  # mode cable: the app gets nothing; the core connects to its cable port as it does through
+  #             usbmuxd for a real iPhone, and pairing and all data go through the cable link.
   e2e:
     runs-on: macos-15
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [qr, cable]
     steps:
       - uses: actions/checkout@v5
 
@@ -194,13 +201,17 @@ jobs:
           mkdir -p "$OUT"
           ./desktop/src-tauri/target/debug/examples/ios_e2e_host --out "$OUT" \
             --expect-photos "$RUNNER_TEMP/fixtures/expect" --restore-photos "$RUNNER_TEMP/fixtures/restore" \
-            > "$OUT/host.log" 2>&1 &
+            ${{ matrix.mode == 'cable' && '--cable' || '' }} > "$OUT/host.log" 2>&1 &
           HOST=$!
           for i in $(seq 60); do [ -f "$OUT/pair-uri.txt" ] && break; sleep 1; done
           # The driver opens the app with the QR code's content (debug builds accept it as a
           # launch argument) and answers permission dialogs until the PC side is done.
           # TEST_RUNNER_X reaches the test as X.
-          export TEST_RUNNER_SF_PAIRING_URI="$(cat "$OUT/pair-uri.txt")"
+          if [ "${{ matrix.mode }}" = cable ]; then
+            export TEST_RUNNER_SF_CABLE=1
+          else
+            export TEST_RUNNER_SF_PAIRING_URI="$(cat "$OUT/pair-uri.txt")"
+          fi
           export TEST_RUNNER_SF_DONE_FILE="$OUT/done"
           (cd ios && xcodebuild test-without-building -project SwitchFlowCompanion.xcodeproj -scheme SwitchFlowE2E \
             -destination "id=$UDID" -derivedDataPath build/DerivedData -resultBundlePath "$OUT/E2E.xcresult" \
@@ -220,7 +231,7 @@ jobs:
           grep "SF-E2E\|error:\|Test Case" "$OUT/driver.log" || tail -30 "$OUT/driver.log"
           cat "$OUT/host.log"
           {
-            echo "## iOS ↔ SwitchFlow core end-to-end"
+            echo "## iOS ↔ SwitchFlow core end-to-end (${{ matrix.mode }})"
             echo '```'
             tail -40 "$OUT/host.log"
             echo '```'
@@ -238,7 +249,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: e2e-results
+          name: e2e-results-${{ matrix.mode }}
           path: |
             ${{ runner.temp }}/e2e/*.log
             ${{ runner.temp }}/e2e/*.png

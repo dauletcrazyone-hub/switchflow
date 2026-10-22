@@ -7,7 +7,11 @@
 //!   C. repeats B and expects everything to be skipped as duplicates.
 //! Exits non-zero with a readable reason on the first failed expectation.
 //!
-//! Usage: ios_e2e_host --out <dir> --expect-photos <dir> --restore-photos <dir>
+//! With `--cable` the app is not given the pairing code at all: the host connects to the app's
+//! cable port (127.0.0.1:47822, the simulator shares the Mac's network) exactly as the PC does
+//! through usbmuxd for a real iPhone, and everything — pairing included — goes through the cable link.
+//!
+//! Usage: ios_e2e_host --out <dir> --expect-photos <dir> --restore-photos <dir> [--cable]
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -158,6 +162,22 @@ async fn scenario(core: Arc<Core>, out: PathBuf) -> R<serde_json::Value> {
     let info = core.start_pairing();
     std::fs::write(out.join("pair-uri.txt"), &info.uri).map_err(|e| e.to_string())?;
     log(format!("pairing URI written, port {}", info.port));
+    let cable = std::env::args().any(|a| a == "--cable");
+    if cable {
+        // The app gets nothing at launch: it learns the pairing data from the cable link's HELLO.
+        let core = core.clone();
+        std::thread::spawn(move || loop {
+            match std::net::TcpStream::connect(("127.0.0.1", switchflow_lib::usbmux::DEVICE_PORT)) {
+                Ok(s) => {
+                    log("cable: connected to the app's cable port");
+                    let t = switchflow_lib::cable::TcpTransport::new(s).expect("socket options");
+                    switchflow_lib::cable::run_link(Arc::new(t), &core);
+                    log("cable: link closed");
+                }
+                Err(_) => std::thread::sleep(Duration::from_millis(500)),
+            }
+        });
+    }
     let req = wait_for("the iPhone app to request pairing", 300, || core.snapshot().pair_requests.first().cloned()).await?;
     log(format!(
         "pairing request: model={} code={} name={} os={} via_usb={}",
@@ -165,6 +185,7 @@ async fn scenario(core: Arc<Core>, out: PathBuf) -> R<serde_json::Value> {
     ));
     check!(req.device.platform == Platform::Ios, "request came from {:?}", req.device.platform);
     check!(req.code.len() == 6, "bad verification code");
+    check!(!cable || req.via_usb, "cable mode, but the pairing request did not come through the cable");
     core.respond_pairing(&req.id, true).map_err(|e| format!("approve: {e:?}"))?;
     let device_id = req.device.id.clone();
     wait_for("the iPhone to connect", 60, || {
