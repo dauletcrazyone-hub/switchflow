@@ -263,12 +263,18 @@ async function attach(backend: Backend, demo: boolean) {
   }
 }
 
+const seenRequests = new Set<string>();
+
 /**
  * Album ids belong to the phone that listed them: after a direction swap or a new source phone,
  * an old choice would match none of the new albums and silently select nothing.
  */
 export function applySnapshot(snapshot: Snapshot) {
   const st = useApp.getState();
+  // A phone connected by cable asks to pair without anyone opening the QR window: show the request.
+  const fresh = snapshot.pairRequests.filter((r) => r.status === "pending" && !seenRequests.has(r.id));
+  fresh.forEach((r) => seenRequests.add(r.id));
+  if (fresh.length > 0 && !st.pairingOpen) useApp.setState({ pairingOpen: true });
   const sourceChanged = snapshot.sourceId !== st.snapshot.sourceId;
   if (sourceChanged && Object.keys(st.selection.albums).length > 0) {
     useApp.setState({ snapshot, selection: { ...st.selection, albums: {} } });

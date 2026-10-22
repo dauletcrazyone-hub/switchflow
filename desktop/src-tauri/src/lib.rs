@@ -1,6 +1,7 @@
 //! SwitchFlow desktop backend.
 
 pub mod backup;
+pub mod cable;
 pub mod checksum;
 pub mod commands;
 pub mod compatibility;
@@ -93,7 +94,9 @@ pub fn run() {
 
             tauri::async_runtime::spawn(server::serve(core.clone(), identity));
             spawn_background(core.clone());
-            discovery::spawn(core.clone());
+            let cable = cable::Cable::new();
+            discovery::spawn(core.clone(), cable.clone());
+            app.manage(cable);
             spawn_ui_bridge(app.handle().clone(), core.clone());
             app.manage(core);
             Ok(())
@@ -124,6 +127,8 @@ pub fn run() {
             commands::get_app_info,
             commands::reveal_path,
             commands::adb_reverse,
+            commands::cable_connect,
+            commands::install_cable_driver,
             commands::reset_identity,
         ])
         .run(tauri::generate_context!())

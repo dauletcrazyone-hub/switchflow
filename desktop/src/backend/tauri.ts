@@ -63,6 +63,8 @@ export class TauriBackend implements Backend {
   getAppInfo = () => invoke<AppInfo>("get_app_info");
   revealPath = (path: string) => invoke<void>("reveal_path", { path });
   adbReverse = (serial: string) => invoke<void>("adb_reverse", { serial });
+  cableConnect = () => invoke<number>("cable_connect");
+  installCableDriver = () => invoke<void>("install_cable_driver");
   resetIdentity = () => invoke<void>("reset_identity");
 
   pickFolder = async () => {

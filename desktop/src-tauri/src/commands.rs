@@ -171,6 +171,64 @@ pub fn reveal_path(app: AppHandle, core: Core_<'_>, path: PathBuf) -> FResult<()
     app.opener().open_path(canon.to_string_lossy(), None::<&str>).map_err(|_| Fault::Io("open_failed".into()))
 }
 
+/// Switches the connected Android phones into USB accessory mode: transfer over the cable without
+/// USB debugging and without the QR code. Returns how many phones switched.
+#[tauri::command]
+pub async fn cable_connect(core: Core_<'_>, cable: State<'_, Arc<crate::cable::Cable>>) -> FResult<usize> {
+    if !cable.available() {
+        return Err(Fault::State("cable_unavailable"));
+    }
+    let (cable, core) = (cable.inner().clone(), core.inner().clone());
+    tauri::async_runtime::spawn_blocking(move || {
+        let n = cable.switch_phones();
+        // The phones come back in accessory mode within a second or two; link them right away.
+        for _ in 0..(if n > 0 { 10 } else { 0 }) {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            cable.poll(&core);
+            core.set_cable(cable.available(), cable.links(), cable.phones());
+        }
+        n
+    })
+    .await
+    .map_err(|_| Fault::State("cable_failed"))
+}
+
+/// Installs the UsbDk driver bundled with the app, for when the installer could not (the .msi
+/// package cannot run another installer). Windows asks for administrator approval; the cable
+/// option appears after SwitchFlow is restarted.
+#[tauri::command]
+pub async fn install_cable_driver(app: AppHandle) -> FResult<()> {
+    use tauri::Manager;
+    let msi = app
+        .path()
+        .resolve("drivers/UsbDk_x64.msi", tauri::path::BaseDirectory::Resource)
+        .map_err(|_| Fault::State("driver_missing"))?;
+    if !msi.exists() {
+        return Err(Fault::State("driver_missing"));
+    }
+    let status = tauri::async_runtime::spawn_blocking(move || {
+        let mut cmd = std::process::Command::new("powershell");
+        cmd.args([
+            "-NoProfile",
+            "-Command",
+            &format!("$p = Start-Process msiexec -Verb RunAs -Wait -PassThru -ArgumentList '/i \"{}\" /qb /norestart'; exit $p.ExitCode", msi.display()),
+        ]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        cmd.status()
+    })
+    .await
+    .map_err(|_| Fault::State("driver_install_failed"))?;
+    match status {
+        // 3010: installed, a reboot is suggested; UsbDk works without it.
+        Ok(s) if s.success() || s.code() == Some(3010) => Ok(()),
+        _ => Err(Fault::State("driver_install_failed")),
+    }
+}
+
 /// Routes the phone's 127.0.0.1 to this PC over USB via `adb reverse`.
 #[tauri::command]
 pub fn adb_reverse(core: Core_<'_>, serial: String) -> FResult<()> {

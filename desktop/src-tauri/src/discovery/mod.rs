@@ -13,6 +13,7 @@ mod setupapi;
 #[cfg(windows)]
 mod wpd;
 
+use crate::cable::Cable;
 use crate::core::{Core, UsbDevice};
 use crate::model::Platform;
 use std::sync::Arc;
@@ -20,14 +21,14 @@ use std::time::Duration;
 
 const POLL: Duration = Duration::from_secs(3);
 
-pub fn spawn(core: Arc<Core>) {
+pub fn spawn(core: Arc<Core>, cable: Arc<Cable>) {
     std::thread::Builder::new()
         .name("sf-discovery".into())
-        .spawn(move || run(core))
+        .spawn(move || run(core, cable))
         .expect("spawn discovery thread");
 }
 
-fn run(core: Arc<Core>) {
+fn run(core: Arc<Core>, cable: Arc<Cable>) {
     #[cfg(windows)]
     let mut wpd = wpd::Watcher::new();
     loop {
@@ -48,6 +49,9 @@ fn run(core: Arc<Core>) {
         }
         list.sort_by(|a, b| a.id.cmp(&b.id));
         core.set_usb_devices(list);
+        // Phones already in accessory mode (switched earlier, or the app was restarted) get a link.
+        cable.poll(&core);
+        core.set_cable(cable.available(), cable.links(), cable.phones());
         std::thread::sleep(POLL);
     }
 }

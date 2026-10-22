@@ -97,8 +97,14 @@ async fn pair_status(State(core): State<Shared>, Path(id): Path<String>) -> Resu
     Ok(Json(json!({ "status": status, "token": token, "desktopName": core.desktop_name })))
 }
 
-async fn heartbeat(State(core): State<Shared>, Authed(dev): Authed, Json(hb): Json<Heartbeat>) -> Result<Json<serde_json::Value>, Fault> {
-    let role = core.heartbeat(&dev, hb)?;
+async fn heartbeat(
+    State(core): State<Shared>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Authed(dev): Authed,
+    Json(hb): Json<Heartbeat>,
+) -> Result<Json<serde_json::Value>, Fault> {
+    // Loopback = the phone reached us through a cable (USB accessory link or adb reverse).
+    let role = core.heartbeat(&dev, hb, addr.ip().is_loopback())?;
     Ok(Json(json!({ "role": role })))
 }
 

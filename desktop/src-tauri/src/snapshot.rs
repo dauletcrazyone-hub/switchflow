@@ -71,6 +71,7 @@ pub struct Snapshot {
     pub source_id: Option<String>,
     pub target_id: Option<String>,
     pub usb: Vec<UsbDevice>,
+    pub cable: crate::core::CableStatus,
     pub session: Option<SessionView>,
     pub resumable: Option<ResumableInfo>,
 }
@@ -176,6 +177,7 @@ impl Core {
             source_id: st.source_id.clone(),
             target_id: st.target_id.clone(),
             usb: st.usb.clone(),
+            cable: st.cable.clone(),
             session,
             resumable,
         }

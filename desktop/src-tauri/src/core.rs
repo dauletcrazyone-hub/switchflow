@@ -168,6 +168,19 @@ pub struct State {
     /// A session restored from disk after a restart, waiting for the user.
     pub saved_session: Option<Session>,
     pub usb: Vec<UsbDevice>,
+    pub cable: CableStatus,
+}
+
+/// Cable transfer without USB debugging (see cable.rs).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CableStatus {
+    /// UsbDk is installed, so phones can be switched into accessory mode.
+    pub available: bool,
+    /// Phones currently linked over the cable.
+    pub links: usize,
+    /// Android phones on USB that could be switched to the cable link.
+    pub phones: usize,
 }
 
 pub struct Core {
@@ -542,9 +555,11 @@ impl Core {
 
     // --------------------------------------------------------------- devices
 
-    pub fn heartbeat(&self, device_id: &str, hb: Heartbeat) -> FResult<Role> {
+    pub fn heartbeat(&self, device_id: &str, hb: Heartbeat, via_usb: bool) -> FResult<Role> {
         let reconnected = self.mutate(|st| {
             let d = st.devices.get_mut(device_id).ok_or(Fault::Unauthorized)?;
+            // A paired phone may move between Wi-Fi and the cable.
+            d.via_usb = via_usb;
             d.info.storage_free_bytes = hb.storage_free_bytes;
             d.info.storage_total_bytes = hb.storage_total_bytes;
             d.info.battery_percent = hb.battery_percent.map(|b| b.min(100));
@@ -752,6 +767,17 @@ impl Core {
     }
 
     // --------------------------------------------------------------- USB list
+
+    pub fn set_cable(&self, available: bool, links: usize, phones: usize) {
+        let status = CableStatus { available, links, phones };
+        let changed = {
+            let mut st = self.lock();
+            std::mem::replace(&mut st.cable, status.clone()) != status
+        };
+        if changed {
+            self.notify_ui();
+        }
+    }
 
     pub fn set_usb_devices(&self, list: Vec<UsbDevice>) {
         let changed = {

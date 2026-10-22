@@ -3,6 +3,8 @@ desktop/node_modules/
 desktop/dist/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/schemas/
+# Fetched by desktop/src-tauri/windows/fetch-usbdk.ps1 (checksum-pinned)
+desktop/src-tauri/windows/drivers/
 
 # Android
 android/.gradle/

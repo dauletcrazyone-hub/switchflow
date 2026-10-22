@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sent by the SwitchFlow PC when it switches the phone into accessory mode (desktop cable.rs). -->
+<resources>
+    <usb-accessory manufacturer="SwitchFlow" model="SwitchFlow Cable" />
+</resources>

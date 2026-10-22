@@ -11,7 +11,7 @@
     "test:watch": "vitest",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/windows/fetch-usbdk.ps1 && tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

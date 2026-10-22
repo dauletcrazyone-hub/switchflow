@@ -1,9 +1,11 @@
 package app.switchflow.companion.core
 
 import android.content.Context
+import android.hardware.usb.UsbAccessory
 import android.net.Uri
 import app.switchflow.companion.net.ApiClient
 import app.switchflow.companion.net.ApiException
+import app.switchflow.companion.net.CableLink
 import app.switchflow.companion.net.Category
 import app.switchflow.companion.net.Command
 import app.switchflow.companion.net.InventoryBody
@@ -80,6 +82,8 @@ enum class Message { BadQr, Unreachable, Denied, Expired, Forgotten }
  * The companion's brain: pairing, heartbeat, the PC's command queue and the
  * per-session upload/download workers. UI observes [state]; nothing here touches views.
  */
+private const val LOOPBACK = "127.0.0.1"
+
 class CompanionController(private val app: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val store = Store(app)
@@ -151,6 +155,52 @@ class CompanionController(private val app: Context) {
         } catch (e: IOException) {
             _state.update { UiState(message = Message.Unreachable) }
         }
+    }
+
+    // --------------------------------------------------------------- cable
+
+    private var cable: CableLink? = null
+    /** Where the PC is reachable without the cable (from the cable's HELLO), to fall back on unplug. */
+    private var cableHosts: List<String> = emptyList()
+    private var cableServerPort = 0
+
+    private fun SavedPairing.viaCable() = host == LOOPBACK && port == CableLink.LOCAL_PORT
+
+    /** The PC switched the phone into USB accessory mode and the user let SwitchFlow open it. */
+    fun onAccessory(accessory: UsbAccessory) {
+        if (cable?.isOpen == true) return
+        cable = CableLink.open(
+            app, accessory,
+            onHello = { uri -> scope.launch { onCableHello(uri) } },
+            onClosed = { scope.launch { onCableClosed() } },
+        )
+    }
+
+    /** The cable carries what the QR code carries: pair without the camera, or reuse the pairing. */
+    private suspend fun onCableHello(raw: String) {
+        val t = PairingUri.parse(raw) ?: return
+        cableHosts = t.hosts.filter { it != LOOPBACK }
+        cableServerPort = t.port
+        val saved = store.pairing
+        if (saved != null && saved.fingerprint == t.fingerprint) {
+            val p = saved.copy(host = LOOPBACK, port = CableLink.LOCAL_PORT)
+            store.pairing = p
+            connect(p)
+        } else {
+            pair(t.copy(hosts = listOf(LOOPBACK), port = CableLink.LOCAL_PORT))
+        }
+    }
+
+    /** Unplugged: carry on over Wi-Fi when the PC is reachable there; otherwise wait for the cable. */
+    private suspend fun onCableClosed() {
+        cable = null
+        val saved = store.pairing ?: return
+        if (!saved.viaCable() || cableHosts.isEmpty()) return
+        val target = PairingTarget(cableHosts, cableServerPort, saved.fingerprint, "", saved.desktopName)
+        val (_, host) = findReachable(target) ?: return
+        val p = saved.copy(host = host, port = cableServerPort)
+        store.pairing = p
+        connect(p)
     }
 
     // ---------------------------------------------------------- connection

@@ -1,7 +1,10 @@
 package app.switchflow.companion
 
 import android.Manifest
+import android.app.PendingIntent
 import android.content.Intent
+import android.hardware.usb.UsbAccessory
+import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -11,10 +14,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.switchflow.companion.net.CableLink
 import app.switchflow.companion.ui.CompanionScreen
 import app.switchflow.companion.ui.SwitchFlowTheme
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+
+private const val ACTION_CABLE_PERMISSION = "app.switchflow.companion.CABLE_PERMISSION"
 
 class MainActivity : ComponentActivity() {
     private val controller get() = (application as SwitchFlowApp).controller
@@ -43,7 +49,10 @@ class MainActivity : ComponentActivity() {
             store.notificationsAsked = true
             notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        if (savedInstanceState == null) handleTestPairingLink(intent)
+        if (savedInstanceState == null) {
+            handleTestPairingLink(intent)
+            handleAccessory(intent)
+        }
         setContent {
             val state by controller.state.collectAsStateWithLifecycle()
             SwitchFlowTheme {
@@ -71,6 +80,38 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleTestPairingLink(intent)
+        handleAccessory(intent)
+    }
+
+    /** Cable transfer: the system opened SwitchFlow for the PC's accessory, or answered our request. */
+    private fun handleAccessory(intent: Intent?) {
+        val action = intent?.action ?: return
+        if (action != UsbManager.ACTION_USB_ACCESSORY_ATTACHED && action != ACTION_CABLE_PERMISSION) return
+        val accessory = if (Build.VERSION.SDK_INT >= 33) {
+            intent.getParcelableExtra(UsbManager.EXTRA_ACCESSORY, UsbAccessory::class.java)
+        } else {
+            @Suppress("DEPRECATION") intent.getParcelableExtra(UsbManager.EXTRA_ACCESSORY)
+        }
+        accessory?.let(controller::onAccessory)
+    }
+
+    /** The cable was connected while the app was closed and the system prompt was dismissed: ask again. */
+    private fun checkConnectedAccessory() {
+        val usb = getSystemService(UsbManager::class.java) ?: return
+        val accessory = usb.accessoryList?.firstOrNull(CableLink::isOurs) ?: return
+        if (usb.hasPermission(accessory)) {
+            controller.onAccessory(accessory)
+        } else {
+            val back = Intent(this, MainActivity::class.java).setAction(ACTION_CABLE_PERMISSION)
+            // Mutable: the system adds the accessory and the answer to this intent.
+            val pending = PendingIntent.getActivity(this, 0, back, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
+            usb.requestPermission(accessory, pending)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        checkConnectedAccessory()
     }
 
     /** Debug-only test hook (see src/debug/AndroidManifest.xml); release builds never pair from an intent. */
