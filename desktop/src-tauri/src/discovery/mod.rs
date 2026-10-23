@@ -9,7 +9,7 @@
 
 pub mod adb;
 #[cfg(windows)]
-mod setupapi;
+pub mod setupapi;
 #[cfg(windows)]
 pub mod wpd;
 
@@ -31,6 +31,9 @@ pub fn spawn(core: Arc<Core>, cable: Arc<Cable>) {
 fn run(core: Arc<Core>, cable: Arc<Cable>) {
     #[cfg(windows)]
     let mut wpd = wpd::Watcher::new();
+    // "File transfer" interfaces seen without a driver at the previous poll.
+    #[cfg(windows)]
+    let mut mtp_seen: Vec<String> = Vec::new();
     loop {
         let mut list: Vec<UsbDevice> = Vec::new();
         #[cfg(windows)]
@@ -40,6 +43,22 @@ fn run(core: Arc<Core>, cable: Arc<Cable>) {
             if !has_wpd_apple {
                 list.extend(setupapi::apple_without_driver());
             }
+            // Still without a driver one poll later: not an install in progress but a Windows that
+            // cannot install it. Shown so the user is told why no install button appears.
+            let mtp_now = setupapi::mtp_without_driver();
+            if mtp_now.iter().any(|id| mtp_seen.contains(id)) {
+                list.push(UsbDevice {
+                    id: "usb:mtp-driver".into(),
+                    source: "usb".into(),
+                    platform: Some(Platform::Android),
+                    manufacturer: String::new(),
+                    model: String::new(),
+                    status: "mtp_driver_missing".into(),
+                    battery_percent: None,
+                    serial: None,
+                });
+            }
+            mtp_seen = mtp_now;
         }
         let settings = core.settings();
         if settings.use_adb {

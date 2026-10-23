@@ -5,9 +5,51 @@ use crate::core::UsbDevice;
 use crate::model::Platform;
 use windows::core::w;
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
-    SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW, SetupDiGetDeviceRegistryPropertyW,
-    DIGCF_ALLCLASSES, DIGCF_PRESENT, SPDRP_HARDWAREID, SPDRP_SERVICE, SP_DEVINFO_DATA,
+    SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW, SetupDiGetDeviceInstanceIdW,
+    SetupDiGetDeviceRegistryPropertyW, DIGCF_ALLCLASSES, DIGCF_PRESENT, SPDRP_COMPATIBLEIDS, SPDRP_HARDWAREID, SPDRP_SERVICE,
+    SP_DEVINFO_DATA,
 };
+
+/// "File transfer" (MTP) interfaces of phones that Windows could not give a driver to. Seen on a PC
+/// whose Windows had lost wpdusb.sys: every Android phone stayed invisible in Explorer and in
+/// SwitchFlow's install button, with "Error 0xe0000217" in setupapi.dev.log. Returns their
+/// device instance ids; the caller reports only ids that persist, not ones still being installed.
+pub fn mtp_without_driver() -> Vec<String> {
+    let mut out = Vec::new();
+    unsafe {
+        let Ok(set) = SetupDiGetClassDevsW(None, w!("USB"), None, DIGCF_PRESENT | DIGCF_ALLCLASSES) else {
+            return out;
+        };
+        let mut index = 0u32;
+        loop {
+            let mut data = SP_DEVINFO_DATA { cbSize: std::mem::size_of::<SP_DEVINFO_DATA>() as u32, ..Default::default() };
+            if SetupDiEnumDeviceInfo(set, index, &mut data).is_err() {
+                break;
+            }
+            index += 1;
+            let mut buf = [0u8; 2048];
+            if SetupDiGetDeviceRegistryPropertyW(set, &data, SPDRP_COMPATIBLEIDS, None, Some(&mut buf), None).is_err() {
+                continue;
+            }
+            let wide: Vec<u16> = buf.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+            if !String::from_utf16_lossy(&wide).to_ascii_uppercase().contains("USB\\MS_COMP_MTP") {
+                continue;
+            }
+            let mut svc = [0u8; 256];
+            let has_driver = SetupDiGetDeviceRegistryPropertyW(set, &data, SPDRP_SERVICE, None, Some(&mut svc), None).is_ok()
+                && svc.iter().any(|b| *b != 0);
+            if !has_driver {
+                let mut id = [0u16; 512];
+                if SetupDiGetDeviceInstanceIdW(set, &data, Some(&mut id), None).is_ok() {
+                    let end = id.iter().position(|c| *c == 0).unwrap_or(id.len());
+                    out.push(String::from_utf16_lossy(&id[..end]));
+                }
+            }
+        }
+        let _ = SetupDiDestroyDeviceInfoList(set);
+    }
+    out
+}
 
 pub fn apple_without_driver() -> Vec<UsbDevice> {
     let mut out = Vec::new();

@@ -17,6 +17,8 @@ function describe(d: UsbDevice, t: ReturnType<typeof useT>) {
       return { title: t("usb.locked"), hint: t("usb.lockedHint"), warn: true };
     case "unauthorized":
       return { title: t("usb.unauthorized"), hint: t("usb.unauthorizedHint"), warn: true };
+    case "mtp_driver_missing":
+      return { title: t("usb.mtpBroken"), hint: t("usb.mtpBrokenHint"), warn: true };
     case "offline":
       return { title: t("usb.offline"), hint: "", warn: true };
     default:

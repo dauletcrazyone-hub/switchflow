@@ -28,6 +28,10 @@ fn main() {
         }
     }
     #[cfg(windows)]
+    if std::env::args().any(|a| a == "--mtp") {
+        println!("MTP interfaces without a driver: {:?}", switchflow_lib::discovery::setupapi::mtp_without_driver());
+    }
+    #[cfg(windows)]
     if std::env::args().any(|a| a == "--usbflags") {
         for k in ["18D12D000504", "18D12D010504", "18D12D000400", "18D12D010400", "18D12D009999"] {
             println!("{k}: needs fix = {}", switchflow_lib::cable::usbflags::needs_fix(k));

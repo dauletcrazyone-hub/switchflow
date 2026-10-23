@@ -102,7 +102,7 @@ export interface UsbDevice {
   platform: Platform | null;
   manufacturer: string;
   model: string;
-  status: "ready" | "unauthorized" | "driver_missing" | "locked" | "offline";
+  status: "ready" | "unauthorized" | "driver_missing" | "mtp_driver_missing" | "locked" | "offline";
   batteryPercent: number | null;
   serial: string | null;
 }

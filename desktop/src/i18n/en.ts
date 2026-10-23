@@ -61,6 +61,8 @@ const en: Dictionary = {
     useCable: "Connect via cable",
     cableReady: "Done: in the phone app choose “Connect via cable”.",
     installApp: "Install SwitchFlow on the phone",
+    mtpBroken: "Windows cannot open the phone's files",
+    mtpBrokenHint: "The “File transfer” driver does not install on this computer — usually because a Windows system file (wpdusb.sys) is damaged. Cable transfer works without it, but the app cannot be installed over the cable. Repair Windows: as administrator run DISM /Online /Cleanup-Image /RestoreHealth, then sfc /scannow.",
     installHowTo: "No SwitchFlow on the phone? Unlock it and choose “File transfer” in the USB notification — an install button appears.",
     installAgain: "Copy again",
     installCopied: "SwitchFlow.apk was copied to the phone's Downloads. On the phone:",
