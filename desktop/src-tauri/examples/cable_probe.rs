@@ -18,13 +18,19 @@ fn main() {
                     .collect()
             })
             .unwrap_or_default();
-        println!("bus {} addr {:>3}  {:04x}:{:04x}  interfaces {}", dev.bus_number(), dev.address(), d.vendor_id(), d.product_id(), ifaces.join(" "));
+        println!("bus {} addr {:>3}  {:04x}:{:04x}  {:?}  usb {}  interfaces {}", dev.bus_number(), dev.address(), d.vendor_id(), d.product_id(), dev.speed(), d.usb_version(), ifaces.join(" "));
     }
     if std::env::args().any(|a| a == "--iphones") {
         println!("usbmuxd: available={}, devices={:?}", switchflow_lib::usbmux::available(), switchflow_lib::usbmux::list_devices());
         match switchflow_lib::usbmux::connect(1, switchflow_lib::usbmux::DEVICE_PORT) {
             Ok(_) => println!("connect to device 1: opened"),
             Err(e) => println!("connect to device 1: {e}"),
+        }
+    }
+    #[cfg(windows)]
+    if std::env::args().any(|a| a == "--usbflags") {
+        for k in ["18D12D000504", "18D12D010504", "18D12D000400", "18D12D010400", "18D12D009999"] {
+            println!("{k}: needs fix = {}", switchflow_lib::cable::usbflags::needs_fix(k));
         }
     }
     if std::env::args().any(|a| a == "--hide") {

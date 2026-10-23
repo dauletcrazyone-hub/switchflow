@@ -273,6 +273,17 @@ impl Cable {
             if !has_phone_interface(&dev) {
                 continue;
             }
+            #[cfg(windows)]
+            {
+                let keys: Vec<String> = usbflags::accessory_keys(usbflags::bcd(desc.device_version()))
+                    .into_iter()
+                    .filter(|k| usbflags::needs_fix(k))
+                    .collect();
+                if !keys.is_empty() {
+                    let ok = usbflags::turn_off_os_descriptors(&keys);
+                    tracing::info!(ok, "accessory ids: Microsoft OS descriptor query turned off");
+                }
+            }
             match switch_to_accessory(&dev) {
                 Ok(proto) => {
                     tracing::info!(protocol = proto, "phone switched to accessory mode");
@@ -359,7 +370,9 @@ mod hider {
         pid: u64,
         bcd: u64,
     }
-    const MATCH_ALL: u64 = 0xFFFF_FFFF;
+    /// `USB_DK_HIDE_RULE_MATCH_ALL ((ULONG64)(-1))` in UsbDkDataHiderPublic.h. A 32-bit -1 here
+    /// would only match a device class of 0xFFFFFFFF, i.e. nothing (the bug seen on the Galaxy S22).
+    pub(super) const MATCH_ALL: u64 = u64::MAX;
 
     type CreateFn = unsafe extern "C" fn() -> HANDLE;
     type AddFn = unsafe extern "C" fn(HANDLE, *const HideRule) -> i32;
@@ -437,6 +450,60 @@ pub fn is_phone_interface(class: u8, subclass: u8, protocol: u8) -> bool {
 fn has_phone_interface(dev: &rusb::Device<rusb::Context>) -> bool {
     let Ok(cfg) = dev.active_config_descriptor().or_else(|_| dev.config_descriptor(0)) else { return false };
     cfg.interfaces().any(|i| i.descriptors().any(|d| is_phone_interface(d.class_code(), d.sub_class_code(), d.protocol_code())))
+}
+
+/// Windows asks a USB device for Microsoft OS descriptors when its `usbflags` entry says it has
+/// them (`osvc` = 01 xx). A phone may advertise them in normal mode and keep advertising them in
+/// accessory mode, yet answer wrongly there: Windows then resets the port again and again and the
+/// phone never comes up (Galaxy S22, Android 16: its log showed "connected, configured: 0" in a
+/// loop). Accessory mode needs no OS descriptors, so SwitchFlow records `osvc` = 00 00 for the
+/// phone's accessory ids before switching it — once per phone model, with administrator approval.
+#[cfg(windows)]
+pub mod usbflags {
+    use std::process::Command;
+
+    const KEY: &str = r"HKLM\SYSTEM\CurrentControlSet\Control\usbflags";
+
+    /// Back from rusb's version to the raw bcdDevice (Windows names the key after it).
+    pub fn bcd(v: rusb::Version) -> u16 {
+        ((v.major() as u16 / 10) << 12) | ((v.major() as u16 % 10) << 8) | ((v.minor() as u16) << 4) | v.sub_minor() as u16
+    }
+
+    /// `usbflags` key names for the accessory ids the phone comes back as (without and with ADB).
+    pub fn accessory_keys(bcd_device: u16) -> Vec<String> {
+        [0x2D00u16, 0x2D01].iter().map(|pid| format!("{:04X}{:04X}{:04X}", super::GOOGLE_VID, pid, bcd_device)).collect()
+    }
+
+    fn hidden(cmd: &mut Command) -> &mut Command {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+    }
+
+    /// `reg query` output → whether `osvc` is already 00 00.
+    pub fn osvc_is_off(reg_output: &str) -> bool {
+        reg_output.lines().any(|l| {
+            let mut parts = l.split_whitespace();
+            parts.next() == Some("osvc")
+                && parts.next() == Some("REG_BINARY")
+                && parts.next().is_some_and(|v| v.chars().all(|c| c == '0'))
+        })
+    }
+
+    pub fn needs_fix(key: &str) -> bool {
+        let out = hidden(Command::new("reg").args(["query", &format!(r"{KEY}\{key}"), "/v", "osvc"])).output();
+        !out.is_ok_and(|o| osvc_is_off(&String::from_utf8_lossy(&o.stdout)))
+    }
+
+    /// One administrator prompt for all keys. False if the user declined or it failed.
+    pub fn turn_off_os_descriptors(keys: &[String]) -> bool {
+        // The path has no spaces, so no quotes that PowerShell and cmd would each have to unwrap.
+        let cmds: Vec<String> = keys.iter().map(|k| format!(r"reg add {KEY}\{k} /v osvc /t REG_BINARY /d 0000 /f")).collect();
+        let script = format!(
+            "$p = Start-Process cmd -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList '/c {}'; exit $p.ExitCode",
+            cmds.join(" & ")
+        );
+        hidden(Command::new("powershell").args(["-NoProfile", "-Command", &script])).status().is_ok_and(|s| s.success())
+    }
 }
 
 fn switch_to_accessory(dev: &rusb::Device<rusb::Context>) -> rusb::Result<u16> {
@@ -709,6 +776,26 @@ mod tests {
             let f = control_frame(Kind::Hello, 0, &vec![b'x'; len]);
             assert_ne!(f.len() % 64, 0);
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn usbflags_keys_follow_the_phone_revision() {
+        // Galaxy S22: bcdDevice 0x0504 in normal mode and in accessory mode.
+        assert_eq!(usbflags::bcd(rusb::Version::from_bcd(0x0504)), 0x0504);
+        assert_eq!(usbflags::bcd(rusb::Version::from_bcd(0x0515)), 0x0515);
+        assert_eq!(usbflags::accessory_keys(0x0504), vec!["18D12D000504", "18D12D010504"]);
+        let on = "\r\nHKEY_LOCAL_MACHINE\\...\\18D12D000504\r\n    osvc    REG_BINARY    0101\r\n";
+        let off = "\r\nHKEY_LOCAL_MACHINE\\...\\18D12D000504\r\n    osvc    REG_BINARY    0000\r\n";
+        assert!(!usbflags::osvc_is_off(on));
+        assert!(usbflags::osvc_is_off(off));
+        assert!(!usbflags::osvc_is_off("ERROR: The system was unable to find the specified registry key or value."));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn hide_rule_wildcard_is_the_64_bit_one() {
+        assert_eq!(super::hider::MATCH_ALL, 0xFFFF_FFFF_FFFF_FFFF);
     }
 
     #[test]

@@ -73,24 +73,50 @@ export function CategoryPanel({
   const [showExtras, setShowExtras] = useState(false);
   const { rows, selected, ready, pendingScan, bytes } = useCategoryState(source, targetPlatform);
 
+  // Ticks made in quick succession go to the phone as one request, so it shows one permission card.
+  const pending = useRef<Set<Category>>(new Set());
+  /** When a fresh count was asked for each category: an older result must not decide anything. */
+  const recountAsked = useRef<Map<Category, number>>(new Map());
+  const countedFor = useRef<string | null>(null);
+
+  // A new source phone (direction swapped, another phone connected) has not counted the categories
+  // that are still ticked, or counted them long ago; without asking it, the start button would
+  // wait forever or act on an outdated count.
+  // Runs before the check below (effects run in order), so a stale count is recounted, not acted on.
+  useEffect(() => {
+    if (!source.connected || countedFor.current === source.info.id) return;
+    countedFor.current = source.info.id;
+    recountAsked.current.clear();
+    const stale = (inv: CategorySummary | undefined) => !inv || Date.now() - (inv.scannedMs ?? 0) > STALE_SCAN_MS;
+    const missing = rows.filter((r) => r.selected && !r.scanning && stale(r.inventory)).map((r) => r.category);
+    if (missing.length) scan(missing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per source phone
+  }, [source.info.id, source.connected, rows]);
+
   // A category whose access was refused, or that turned out empty, cannot stay selected:
-  // otherwise it would block the start button for everything else.
+  // otherwise it would block the start button for everything else. Only a fresh result counts:
+  // found on a Galaxy A10 whose contacts were deleted and later restored — the old "0" unticked
+  // contacts again right after the user ticked them, while the new count was on its way.
   useEffect(() => {
     for (const r of rows) {
-      if (r.selected && r.inventory && (r.inventory.permission === "denied" || r.inventory.permission === "unavailable" || r.inventory.count === 0)) {
+      if (!r.selected || !r.inventory || r.scanning || pending.current.has(r.category)) continue;
+      if ((recountAsked.current.get(r.category) ?? 0) > (r.inventory.scannedMs ?? 0)) continue;
+      if (r.inventory.permission === "denied" || r.inventory.permission === "unavailable" || r.inventory.count === 0) {
         toggle(r.category, false);
       }
     }
   }, [rows, toggle]);
 
-  // Ticks made in quick succession go to the phone as one request, so it shows one permission card.
-  const pending = useRef<Set<Category>>(new Set());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
   const scan = (cats: Category[], force = false) => {
     const need = force ? cats : cats.filter((c) => !source.scanning.includes(c));
     if (!need.length) return;
-    need.forEach((c) => pending.current.add(c));
+    const now = Date.now();
+    need.forEach((c) => {
+      pending.current.add(c);
+      recountAsked.current.set(c, now);
+    });
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       const batch = [...pending.current];
@@ -99,17 +125,6 @@ export function CategoryPanel({
       if (batch.length) void run((b) => b.requestScan(batch));
     }, 500);
   };
-
-  // A new source phone (direction swapped, another phone connected) has not counted the categories
-  // that are still ticked; without asking it, the start button would wait for them forever.
-  const countedFor = useRef<string | null>(null);
-  useEffect(() => {
-    if (!source.connected || countedFor.current === source.info.id) return;
-    countedFor.current = source.info.id;
-    const missing = rows.filter((r) => r.selected && !r.inventory && !r.scanning).map((r) => r.category);
-    if (missing.length) scan(missing);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per source phone
-  }, [source.info.id, source.connected, rows]);
 
   const onToggle = (category: Category, on: boolean) => {
     toggle(category, on);

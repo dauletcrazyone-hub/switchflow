@@ -66,7 +66,7 @@ const en: Dictionary = {
     driverNeededHint: "Without USB debugging or a QR code, Windows talks to the phone through the UsbDk driver. It comes with SwitchFlow.",
     installDriver: "Install driver",
     driverInstalled: "Driver installed. Restart SwitchFlow to connect phones by cable.",
-    cableHint: "No USB debugging and no QR code. Only the SwitchFlow app is needed on the phone.",
+    cableHint: "No USB debugging and no QR code. Only the SwitchFlow app is needed on the phone. For a new phone model Windows asks for administrator approval once.",
     cableSwitched: "The phone is switching to cable mode. Tap “OK” on the phone to open SwitchFlow.",
     cableNone: "The phone did not switch to cable mode. Unlock it and try again.",
   },

@@ -52,6 +52,32 @@ describe("CategoryPanel after a direction swap", () => {
   });
 });
 
+describe("CategoryPanel with an outdated empty count", () => {
+  // Found on a Galaxy A10: its contacts were deleted (count 0), later 3 came back by transfer.
+  // The old "0" unticked contacts again right after they were ticked, and the backup skipped them.
+  it("keeps a re-ticked category until the fresh count arrives", async () => {
+    vi.useFakeTimers();
+    const requestScan = vi.fn(async () => undefined);
+    useApp.setState({ backend: { requestScan } as never, selection: { categories: ["contacts"], albums: {}, contactsPolicy: "merge", includePrevious: false } });
+    const old = Date.now() - 15 * 60_000;
+    const a10: DeviceView = {
+      ...source,
+      info: { ...source.info, id: "a10", model: "SM-A105F" },
+      inventory: [{ category: "contacts", permission: "granted", count: 0, totalBytes: 0, albums: [], note: null, scannedMs: old }],
+    };
+    const { rerender } = render(<CategoryPanel source={a10} targetPlatform={null} onStart={() => undefined} startLabel="Сохранить на компьютер" />);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(requestScan).toHaveBeenCalledWith(["contacts"]);
+    expect(useApp.getState().selection.categories).toEqual(["contacts"]);
+    // The fresh count: 3 contacts. Still ticked.
+    const fresh = { ...a10, inventory: [{ ...a10.inventory[0]!, count: 3, totalBytes: 444, scannedMs: Date.now() }] };
+    rerender(<CategoryPanel source={fresh} targetPlatform={null} onStart={() => undefined} startLabel="Сохранить на компьютер" />);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(useApp.getState().selection.categories).toEqual(["contacts"]);
+    vi.useRealTimers();
+  });
+});
+
 describe("needsScan", () => {
   const inv = (over: Partial<CategorySummary>): CategorySummary => ({
     category: "photos", permission: "granted", count: 10, totalBytes: 1, albums: [], note: null, scannedMs: 1_000_000, ...over,
