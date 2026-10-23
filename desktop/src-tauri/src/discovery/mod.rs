@@ -70,7 +70,7 @@ fn run(core: Arc<Core>, cable: Arc<Cable>) {
         core.set_usb_devices(list);
         // Phones already in accessory mode (switched earlier, or the app was restarted) get a link.
         cable.poll(&core);
-        core.set_cable(cable.available(), cable.links(), cable.phones());
+        core.set_cable(cable.status());
         std::thread::sleep(POLL);
     }
 }

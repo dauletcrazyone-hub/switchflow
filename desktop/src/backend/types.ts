@@ -197,7 +197,7 @@ export interface Snapshot {
   targetId: string | null;
   usb: UsbDevice[];
   /** Cable transfer without USB debugging (Android accessory mode through UsbDk). */
-  cable: { available: boolean; links: number; phones: number };
+  cable: { available: boolean; links: number; phones: number; stuck: boolean };
   session: SessionView | null;
   resumable: ResumableInfo | null;
 }
@@ -313,7 +313,7 @@ export const EMPTY_SNAPSHOT: Snapshot = {
   sourceId: null,
   targetId: null,
   usb: [],
-  cable: { available: false, links: 0, phones: 0 },
+  cable: { available: false, links: 0, phones: 0, stuck: false },
   session: null,
   resumable: null,
 };

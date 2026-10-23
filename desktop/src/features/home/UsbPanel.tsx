@@ -44,7 +44,8 @@ export function UsbPanel() {
   const cablePhones = cable.available ? cable.phones : 0;
   // Without the UsbDk driver Windows cannot switch phones to the cable link (cable.rs).
   const needsDriver = !cable.available && usb.some((d) => d.platform === "android");
-  if (usb.length === 0 && cablePhones === 0) return null;
+  const stuck = cable.available && cable.stuck;
+  if (usb.length === 0 && cablePhones === 0 && !stuck) return null;
 
   const installDriver = async () => {
     setSwitching(true);
@@ -99,6 +100,25 @@ export function UsbPanel() {
                     {t("usb.cableConnect")}
                   </Button>
                 </div>
+              </div>
+            </motion.div>
+          )}
+          {stuck && (
+            <motion.div
+              key="cable-stuck"
+              layout
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.97 }}
+              transition={motionTokens.springSoft}
+              className="glass flex items-start gap-3 rounded-2xl p-4"
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warning-soft text-warning">
+                <CircleAlert size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-body font-semibold">{t("usb.cableStuck")}</div>
+                <p className="mt-0.5 text-caption text-text-2">{t("usb.cableStuckHint")}</p>
               </div>
             </motion.div>
           )}

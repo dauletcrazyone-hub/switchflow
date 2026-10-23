@@ -185,7 +185,7 @@ pub async fn cable_connect(core: Core_<'_>, cable: State<'_, Arc<crate::cable::C
         for _ in 0..(if n > 0 { 10 } else { 0 }) {
             std::thread::sleep(std::time::Duration::from_millis(500));
             cable.poll(&core);
-            core.set_cable(cable.available(), cable.links(), cable.phones());
+            core.set_cable(cable.status());
         }
         n
     })

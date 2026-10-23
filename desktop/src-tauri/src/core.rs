@@ -181,6 +181,8 @@ pub struct CableStatus {
     pub links: usize,
     /// Android phones on USB that could be switched to the cable link.
     pub phones: usize,
+    /// USB devices cannot be listed: a phone hung on USB blocks the others (see cable.rs).
+    pub stuck: bool,
 }
 
 pub struct Core {
@@ -768,8 +770,7 @@ impl Core {
 
     // --------------------------------------------------------------- USB list
 
-    pub fn set_cable(&self, available: bool, links: usize, phones: usize) {
-        let status = CableStatus { available, links, phones };
+    pub fn set_cable(&self, status: CableStatus) {
         let changed = {
             let mut st = self.lock();
             std::mem::replace(&mut st.cable, status.clone()) != status

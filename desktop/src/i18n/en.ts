@@ -71,6 +71,8 @@ const en: Dictionary = {
     installStep3: "If Android asks, allow installing from this source and go back.",
     installStep4: "Tap “Install”, then “Open”.",
     cableConnect: "Connect by cable",
+    cableStuck: "A phone is stuck on USB",
+    cableStuckHint: "Windows cannot query USB devices: one of the phones did not finish switching. While it is plugged in, no phone can connect by cable. Unplug the phones' cables and plug them in again.",
     cableTitle: "Android phones on the cable: {count}",
     driverNeeded: "Cable transfer needs a USB driver",
     driverNeededHint: "Without USB debugging or a QR code, Windows talks to the phone through the UsbDk driver. It comes with SwitchFlow.",

@@ -68,6 +68,24 @@ fn main() {
             }
             h.write_control(0x40, 53, 0, 0, &[], t).expect("start");
             println!("switched {id}, AOA protocol {}", u16::from_le_bytes(ver));
+            // `--watch`: keep the handle open and print the phone-maker devices every 500 ms.
+            if args.iter().any(|a| a == "--watch") {
+                for i in 0..16 {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    let seen: Vec<String> = ctx
+                        .devices()
+                        .map(|l| {
+                            l.iter()
+                                .filter_map(|d| d.device_descriptor().ok())
+                                .filter(|d| switchflow_lib::cable::is_phone_vendor(d.vendor_id()))
+                                .map(|d| format!("{:04x}:{:04x}", d.vendor_id(), d.product_id()))
+                                .collect()
+                        })
+                        .unwrap_or_else(|e| vec![format!("list failed: {e}")]);
+                    println!("{} ms: {:?}", (i + 1) * 500, seen);
+                }
+                drop(h);
+            }
         }
     }
 }

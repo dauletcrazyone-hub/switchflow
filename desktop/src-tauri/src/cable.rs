@@ -18,7 +18,7 @@ use crate::core::Core;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
@@ -143,6 +143,8 @@ const ACCESSORY_VERSION: &str = "1";
 const GOOGLE_VID: u16 = 0x18D1;
 /// How long an accessory-mode device must be on the bus before the link opens it.
 const SETTLE: Duration = Duration::from_secs(2);
+/// How long the switch keeps the phone open after ACCESSORY_START (see `switch_to_accessory`).
+const SWITCH_HOLD: Duration = Duration::from_millis(1500);
 /// Accessory, accessory+ADB, and the audio variants.
 const ACCESSORY_PIDS: [u16; 6] = [0x2D00, 0x2D01, 0x2D02, 0x2D03, 0x2D04, 0x2D05];
 /// Phone makers (USB vendor ids). Opening a device through UsbDk briefly takes it away from its
@@ -188,6 +190,10 @@ pub struct Cable {
     linked: Mutex<Vec<(u8, u8)>>,
     /// Android phones seen on USB in normal mode at the last poll.
     phones: AtomicUsize,
+    /// UsbDk could not list USB devices at the last poll. Seen while a phone hung half-switched
+    /// (Windows code 43, "device descriptor request failed"): every other phone was then unreachable
+    /// too, until that phone's cable was unplugged.
+    stuck: AtomicBool,
     /// When each accessory-mode device first appeared, to let Windows finish starting it first.
     first_seen: Mutex<HashMap<(u8, u8), std::time::Instant>>,
     /// iPhones (usbmuxd device ids) with a running link.
@@ -209,6 +215,7 @@ impl Cable {
             ctx,
             linked: Mutex::new(Vec::new()),
             phones: AtomicUsize::new(0),
+            stuck: AtomicBool::new(false),
             first_seen: Mutex::default(),
             linked_iphones: Mutex::default(),
             #[cfg(windows)]
@@ -231,6 +238,16 @@ impl Cable {
     /// Phones that "Connect by cable" would switch (descriptors only: nothing is opened).
     pub fn phones(&self) -> usize {
         self.phones.load(Ordering::Relaxed)
+    }
+
+    /// What the UI shows about the cable link.
+    pub fn status(&self) -> crate::core::CableStatus {
+        crate::core::CableStatus {
+            available: self.available(),
+            links: self.links(),
+            phones: self.phones(),
+            stuck: self.stuck.load(Ordering::Relaxed),
+        }
     }
 
     pub fn links(&self) -> usize {
@@ -268,7 +285,10 @@ impl Cable {
     pub fn switch_phones(&self) -> usize {
         use rusb::UsbContext;
         let Some(ctx) = &self.ctx else { return 0 };
-        let Ok(list) = ctx.devices() else { return 0 };
+        let Ok(list) = ctx.devices() else {
+            self.stuck.store(true, Ordering::Relaxed);
+            return 0;
+        };
         let mut switched = 0;
         for dev in list.iter() {
             let Ok(desc) = dev.device_descriptor() else { continue };
@@ -305,7 +325,14 @@ impl Cable {
         use rusb::UsbContext;
         self.poll_iphones(core);
         let Some(ctx) = &self.ctx else { return };
-        let Ok(list) = ctx.devices() else { return };
+        let Ok(list) = ctx.devices() else {
+            if !self.stuck.swap(true, Ordering::Relaxed) {
+                tracing::warn!("cable: USB device list unavailable (a phone may be stuck mid-switch)");
+            }
+            self.phones.store(0, Ordering::Relaxed);
+            return;
+        };
+        self.stuck.store(false, Ordering::Relaxed);
         let mut phones = 0;
         let mut present = Vec::new();
         for dev in list.iter() {
@@ -529,6 +556,11 @@ fn switch_to_accessory(dev: &rusb::Device<rusb::Context>) -> rusb::Result<u16> {
     }
     // ACCESSORY_START: the phone disconnects and comes back as 18D1:2D0x.
     h.write_control(0x40, 53, 0, 0, &[], TIMEOUT)?;
+    // Closing the handle gives the device back to its Windows driver with a port reset. When the
+    // "File transfer" driver is bound, that reset lands mid-switch: the A10 stayed in MTP mode and
+    // the S22 failed to enumerate (code 43). Holding the handle lets the phone leave on its own.
+    std::thread::sleep(SWITCH_HOLD);
+    drop(h);
     Ok(protocol)
 }
 
