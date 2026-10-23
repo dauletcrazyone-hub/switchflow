@@ -5,6 +5,8 @@ desktop/src-tauri/target/
 desktop/src-tauri/gen/schemas/
 # Fetched by desktop/src-tauri/windows/fetch-usbdk.ps1 (checksum-pinned)
 desktop/src-tauri/windows/drivers/
+# Staged by desktop/src-tauri/windows/prepare-companion.ps1 from the release APK
+desktop/src-tauri/windows/companion/
 
 # Android
 android/.gradle/

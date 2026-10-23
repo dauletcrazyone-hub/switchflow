@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
-import { Cable, CircleAlert, ExternalLink, Smartphone, Usb } from "lucide-react";
+import { Cable, CircleAlert, Download, ExternalLink, Smartphone, Usb } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { UsbDevice } from "../../backend/types";
 import { Button } from "../../components/ui/Button";
@@ -36,6 +36,9 @@ export function UsbPanel() {
   const toast = useApp((s) => s.toast);
   const cable = useApp((s) => s.snapshot.cable);
   const [switching, setSwitching] = useState(false);
+  // Phones the app file was copied to in this window, and the one being copied to right now.
+  const [copied, setCopied] = useState<string[]>([]);
+  const [copying, setCopying] = useState<string | null>(null);
   const cablePhones = cable.available ? cable.phones : 0;
   // Without the UsbDk driver Windows cannot switch phones to the cable link (cable.rs).
   const needsDriver = !cable.available && usb.some((d) => d.platform === "android");
@@ -46,6 +49,13 @@ export function UsbPanel() {
     const ok = await run((b) => b.installCableDriver().then(() => true));
     setSwitching(false);
     if (ok) toast("success", t("usb.driverInstalled"));
+  };
+
+  const installApp = async (id: string) => {
+    setCopying(id);
+    const ok = await run((b) => b.installCompanion(id).then(() => true));
+    setCopying(null);
+    if (ok) setCopied((c) => (c.includes(id) ? c : [...c, id]));
   };
 
   const connectByCable = async () => {
@@ -79,6 +89,9 @@ export function UsbPanel() {
               <div className="min-w-0 flex-1">
                 <div className="text-body font-semibold">{t("usb.cableTitle", { count: cablePhones })}</div>
                 <p className="mt-0.5 text-caption text-text-2">{t("usb.cableHint")}</p>
+                {!usb.some((d) => d.platform === "android" && d.source === "wpd") && (
+                  <p className="mt-1 text-caption text-text-2">{t("usb.installHowTo")}</p>
+                )}
                 <div className="mt-2">
                   <Button size="sm" variant="primary" icon={Cable} loading={switching} onClick={() => void connectByCable()}>
                     {t("usb.cableConnect")}
@@ -129,7 +142,23 @@ export function UsbPanel() {
                 <div className="min-w-0 flex-1">
                   <div className="text-body font-semibold">{info.title}</div>
                   {info.hint && <p className="mt-0.5 text-caption text-text-2">{info.hint}</p>}
+                  {copied.includes(d.id) && (
+                    <div className="mt-2 rounded-xl bg-accent-soft p-3 text-caption" role="status">
+                      <div className="font-semibold">{t("usb.installCopied")}</div>
+                      <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-text-2">
+                        <li>{t("usb.installStep1")}</li>
+                        <li>{t("usb.installStep2")}</li>
+                        <li>{t("usb.installStep3")}</li>
+                        <li>{t("usb.installStep4")}</li>
+                      </ol>
+                    </div>
+                  )}
                   <div className="mt-2 flex flex-wrap gap-2">
+                    {d.platform === "android" && d.status === "ready" && d.source === "wpd" && (
+                      <Button size="sm" variant="subtle" icon={Download} loading={copying === d.id} onClick={() => void installApp(d.id)}>
+                        {t(copied.includes(d.id) ? "usb.installAgain" : "usb.installApp")}
+                      </Button>
+                    )}
                     {d.status === "driver_missing" && (
                       <Button size="sm" variant="subtle" iconRight={ExternalLink} onClick={() => void openUrl(APPLE_DEVICES_URL).catch(() => undefined)}>
                         Apple Devices

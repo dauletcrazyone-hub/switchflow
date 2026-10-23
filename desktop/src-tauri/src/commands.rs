@@ -193,6 +193,39 @@ pub async fn cable_connect(core: Core_<'_>, cable: State<'_, Arc<crate::cable::C
     .map_err(|_| Fault::State("cable_failed"))
 }
 
+/// Copies the SwitchFlow Android app (bundled with the PC app) into the phone's Download folder over
+/// "File transfer" (MTP): no USB debugging and no app store. Installing it is the user's tap on the
+/// phone — Android never lets a computer install apps silently without debugging.
+#[tauri::command]
+pub async fn install_companion(app: AppHandle, device: String) -> FResult<()> {
+    use tauri::Manager;
+    let apk = app
+        .path()
+        .resolve("companion/SwitchFlow.apk", tauri::path::BaseDirectory::Resource)
+        .map_err(|_| Fault::State("companion_missing"))?;
+    let data = std::fs::read(&apk).map_err(|_| Fault::State("companion_missing"))?;
+    #[cfg(windows)]
+    {
+        use crate::discovery::wpd::{push_to_downloads, PushError};
+        let bytes = data.len();
+        tauri::async_runtime::spawn_blocking(move || push_to_downloads(&device, "SwitchFlow.apk", &data))
+            .await
+            .map_err(|_| Fault::State("copy_failed"))?
+            .map_err(|e| match e {
+                PushError::NotFound => Fault::State("phone_not_found"),
+                PushError::Locked => Fault::State("phone_locked"),
+                PushError::Failed => Fault::State("copy_failed"),
+            })?;
+        tracing::info!(bytes, "companion app copied to a phone");
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (device, data);
+        Err(Fault::State("copy_failed"))
+    }
+}
+
 /// Installs the UsbDk driver bundled with the app, for when the installer could not (the .msi
 /// package cannot run another installer). Windows asks for administrator approval; the cable
 /// option appears after SwitchFlow is restarted.

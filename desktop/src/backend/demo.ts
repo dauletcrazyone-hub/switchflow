@@ -628,6 +628,7 @@ export class DemoBackend implements Backend {
   adbReverse = async () => {};
   cableConnect = async () => 0;
   installCableDriver = async () => {};
+  installCompanion = async () => {};
   resetIdentity = async () => {};
   pickFolder = async () => null;
 }

@@ -130,6 +130,7 @@ pub fn run() {
             commands::adb_reverse,
             commands::cable_connect,
             commands::install_cable_driver,
+            commands::install_companion,
             commands::reset_identity,
         ])
         .run(tauri::generate_context!())

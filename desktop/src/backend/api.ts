@@ -49,6 +49,8 @@ export interface Backend {
   cableConnect(): Promise<number>;
   /** Installs the bundled UsbDk driver (administrator approval); the cable option appears after a restart. */
   installCableDriver(): Promise<void>;
+  /** Copies the SwitchFlow Android app to the phone's Download folder over "File transfer". */
+  installCompanion(device: string): Promise<void>;
   resetIdentity(): Promise<void>;
   pickFolder(): Promise<string | null>;
 }

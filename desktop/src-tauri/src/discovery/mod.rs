@@ -11,7 +11,7 @@ pub mod adb;
 #[cfg(windows)]
 mod setupapi;
 #[cfg(windows)]
-mod wpd;
+pub mod wpd;
 
 use crate::cable::Cable;
 use crate::core::{Core, UsbDevice};

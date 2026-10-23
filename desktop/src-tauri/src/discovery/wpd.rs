@@ -119,6 +119,134 @@ unsafe fn describe(mgr: &IPortableDeviceManager, id: &str) -> Option<UsbDevice> 
     })
 }
 
+/// Why copying the app to a phone failed (shown to the user as a hint).
+#[derive(Debug, PartialEq, Eq)]
+pub enum PushError {
+    /// The phone is no longer in the WPD list (unplugged, or not in "File transfer" mode).
+    NotFound,
+    /// No storage or no Download folder is visible: Android hides them until the phone is unlocked.
+    Locked,
+    Failed,
+}
+
+/// Copies `data` as `file_name` into the phone's Download folder over MTP ("File transfer"):
+/// no USB debugging, no app on the phone needed. `device` is the id the USB panel shows.
+/// A file of the same name in that folder (an earlier copy) is replaced.
+pub fn push_to_downloads(device: &str, file_name: &str, data: &[u8]) -> Result<(), PushError> {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let mgr: IPortableDeviceManager = CoCreateInstance(&PortableDeviceManager, None, CLSCTX_INPROC_SERVER).map_err(|_| PushError::Failed)?;
+        let wpd_id = device_ids(&mgr)
+            .into_iter()
+            .find(|id| format!("wpd:{}", &crate::checksum::sha256_bytes(id.as_bytes())[..16]) == device)
+            .ok_or(PushError::NotFound)?;
+        let wide: Vec<u16> = wpd_id.encode_utf16().chain(std::iter::once(0)).collect();
+        let client: IPortableDeviceValues = CoCreateInstance(&PortableDeviceValues, None, CLSCTX_INPROC_SERVER).map_err(|_| PushError::Failed)?;
+        client.SetStringValue(&WPD_CLIENT_NAME, w!("SwitchFlow")).map_err(|_| PushError::Failed)?;
+        client.SetUnsignedIntegerValue(&WPD_CLIENT_MAJOR_VERSION, 0).map_err(|_| PushError::Failed)?;
+        client.SetUnsignedIntegerValue(&WPD_CLIENT_MINOR_VERSION, 1).map_err(|_| PushError::Failed)?;
+        client.SetUnsignedIntegerValue(&WPD_CLIENT_REVISION, 0).map_err(|_| PushError::Failed)?;
+        // GENERIC_READ | GENERIC_WRITE: the one place SwitchFlow writes to a phone over MTP.
+        client.SetUnsignedIntegerValue(&WPD_CLIENT_DESIRED_ACCESS, 0xC000_0000).map_err(|_| PushError::Failed)?;
+        let dev: IPortableDevice = CoCreateInstance(&PortableDeviceFTM, None, CLSCTX_INPROC_SERVER).map_err(|_| PushError::Failed)?;
+        dev.Open(PCWSTR(wide.as_ptr()), &client).map_err(|_| PushError::Failed)?;
+        let result = push(&dev, file_name, data);
+        let _ = dev.Close();
+        result
+    }
+}
+
+unsafe fn children(content: &IPortableDeviceContent, parent: &str) -> Vec<String> {
+    let wide: Vec<u16> = parent.encode_utf16().chain(std::iter::once(0)).collect();
+    let Ok(e) = content.EnumObjects(0, PCWSTR(wide.as_ptr()), None) else { return vec![] };
+    let mut out = Vec::new();
+    loop {
+        let mut batch = [PWSTR::null(); 32];
+        let mut fetched = 0u32;
+        let hr = e.Next(&mut batch, &mut fetched);
+        out.extend(batch.iter().take(fetched as usize).map(|p| pwstr_to_string(*p)));
+        if hr.is_err() || fetched == 0 {
+            break;
+        }
+    }
+    out
+}
+
+unsafe fn object_name(props: &IPortableDeviceProperties, id: &str) -> String {
+    let wide: Vec<u16> = id.encode_utf16().chain(std::iter::once(0)).collect();
+    let Ok(keys) = CoCreateInstance::<_, IPortableDeviceKeyCollection>(&PortableDeviceKeyCollection, None, CLSCTX_INPROC_SERVER) else { return String::new() };
+    let _ = keys.Add(&WPD_OBJECT_ORIGINAL_FILE_NAME);
+    let _ = keys.Add(&WPD_OBJECT_NAME);
+    let Ok(values) = props.GetValues(PCWSTR(wide.as_ptr()), &keys) else { return String::new() };
+    values
+        .GetStringValue(&WPD_OBJECT_ORIGINAL_FILE_NAME)
+        .or_else(|_| values.GetStringValue(&WPD_OBJECT_NAME))
+        .map(|p| pwstr_to_string(p))
+        .unwrap_or_default()
+}
+
+unsafe fn push(dev: &IPortableDevice, file_name: &str, data: &[u8]) -> Result<(), PushError> {
+    let content = dev.Content().map_err(|_| PushError::Failed)?;
+    let props = content.Properties().map_err(|_| PushError::Failed)?;
+    // Storages ("Internal storage", an SD card) are children of the device object; the Download
+    // folder sits in the first one that has it.
+    let download = children(&content, "DEVICE")
+        .into_iter()
+        .find_map(|storage| children(&content, &storage).into_iter().find(|o| object_name(&props, o).eq_ignore_ascii_case("Download")))
+        .ok_or(PushError::Locked)?;
+
+    // Replace an earlier copy instead of getting "SwitchFlow (1).apk".
+    let old: Vec<String> = children(&content, &download).into_iter().filter(|o| object_name(&props, o).eq_ignore_ascii_case(file_name)).collect();
+    if !old.is_empty() {
+        let ids: IPortableDevicePropVariantCollection = CoCreateInstance(&PortableDevicePropVariantCollection, None, CLSCTX_INPROC_SERVER).map_err(|_| PushError::Failed)?;
+        for o in &old {
+            use windows::Win32::System::Com::StructuredStorage::{PROPVARIANT, PROPVARIANT_0, PROPVARIANT_0_0, PROPVARIANT_0_0_0};
+            // A VT_LPWSTR pointing at our own buffer: Add() makes its own copy, and PROPVARIANT
+            // here has no Drop, so the buffer is never freed by COM.
+            let mut wide: Vec<u16> = o.encode_utf16().chain(std::iter::once(0)).collect();
+            let v = PROPVARIANT {
+                Anonymous: PROPVARIANT_0 {
+                    Anonymous: std::mem::ManuallyDrop::new(PROPVARIANT_0_0 {
+                        vt: windows::Win32::System::Variant::VT_LPWSTR,
+                        wReserved1: 0,
+                        wReserved2: 0,
+                        wReserved3: 0,
+                        Anonymous: PROPVARIANT_0_0_0 { pwszVal: PWSTR(wide.as_mut_ptr()) },
+                    }),
+                },
+            };
+            let _ = ids.Add(&v);
+        }
+        let _ = content.Delete(PORTABLE_DEVICE_DELETE_NO_RECURSION.0 as u32, &ids, std::ptr::null_mut());
+    }
+
+    let values: IPortableDeviceValues = CoCreateInstance(&PortableDeviceValues, None, CLSCTX_INPROC_SERVER).map_err(|_| PushError::Failed)?;
+    let parent: Vec<u16> = download.encode_utf16().chain(std::iter::once(0)).collect();
+    let name: Vec<u16> = file_name.encode_utf16().chain(std::iter::once(0)).collect();
+    values.SetStringValue(&WPD_OBJECT_PARENT_ID, PCWSTR(parent.as_ptr())).map_err(|_| PushError::Failed)?;
+    values.SetStringValue(&WPD_OBJECT_ORIGINAL_FILE_NAME, PCWSTR(name.as_ptr())).map_err(|_| PushError::Failed)?;
+    values.SetStringValue(&WPD_OBJECT_NAME, PCWSTR(name.as_ptr())).map_err(|_| PushError::Failed)?;
+    values.SetUnsignedLargeIntegerValue(&WPD_OBJECT_SIZE, data.len() as u64).map_err(|_| PushError::Failed)?;
+    values.SetGuidValue(&WPD_OBJECT_CONTENT_TYPE, &WPD_CONTENT_TYPE_GENERIC_FILE).map_err(|_| PushError::Failed)?;
+    values.SetGuidValue(&WPD_OBJECT_FORMAT, &WPD_OBJECT_FORMAT_UNSPECIFIED).map_err(|_| PushError::Failed)?;
+
+    let mut stream: Option<windows::Win32::System::Com::IStream> = None;
+    let mut chunk = 0u32;
+    content
+        .CreateObjectWithPropertiesAndData(&values, &mut stream, &mut chunk, std::ptr::null_mut())
+        .map_err(|_| PushError::Failed)?;
+    let stream = stream.ok_or(PushError::Failed)?;
+    let chunk = (chunk as usize).clamp(16 * 1024, 1024 * 1024);
+    for part in data.chunks(chunk) {
+        let mut written = 0u32;
+        stream.Write(part.as_ptr() as *const _, part.len() as u32, Some(&mut written)).ok().map_err(|_| PushError::Failed)?;
+        if written as usize != part.len() {
+            return Err(PushError::Failed);
+        }
+    }
+    stream.Commit(windows::Win32::System::Com::STGC_DEFAULT).map_err(|_| PushError::Failed)
+}
+
 /// Opens the device read-only and reads type, model and battery level.
 unsafe fn read_device_properties(pid: PCWSTR) -> Option<(Option<u32>, Option<String>, Option<u32>)> {
     let client: IPortableDeviceValues = CoCreateInstance(&PortableDeviceValues, None, CLSCTX_INPROC_SERVER).ok()?;
