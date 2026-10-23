@@ -86,6 +86,13 @@ unsafe fn manager_string(f: impl Fn(PWSTR, *mut u32) -> windows::core::Result<()
     String::from_utf16_lossy(&buf[..end])
 }
 
+/// USB vendor id from a WPD device path such as `\\?\usb#vid_04e8&pid_6860&ms_comp_mtp#...`.
+fn usb_vendor(path: &str) -> Option<u16> {
+    let lower = path.to_ascii_lowercase();
+    let at = lower.find("vid_")? + 4;
+    u16::from_str_radix(lower.get(at..at + 4)?, 16).ok()
+}
+
 unsafe fn describe(mgr: &IPortableDeviceManager, id: &str) -> Option<UsbDevice> {
     let wide: Vec<u16> = id.encode_utf16().chain(std::iter::once(0)).collect();
     let pid = PCWSTR(wide.as_ptr());
@@ -95,8 +102,12 @@ unsafe fn describe(mgr: &IPortableDeviceManager, id: &str) -> Option<UsbDevice> 
 
     let props = read_device_properties(pid);
     let (dev_type, model, battery) = props.unwrap_or((None, None, None));
-    // Cameras and media players are WPD devices too; they are not phones.
-    if matches!(dev_type, Some(t) if t == WPD_DEVICE_TYPE_CAMERA.0 as u32 || t == WPD_DEVICE_TYPE_MEDIA_PLAYER.0 as u32 || t == WPD_DEVICE_TYPE_AUDIO_RECORDER.0 as u32 || t == WPD_DEVICE_TYPE_VIDEO.0 as u32) {
+    // Cameras and media players are WPD devices too; they are not phones. Some Android phones
+    // (Galaxy A10) report themselves as a media player, so a phone maker's player is kept.
+    let player = dev_type == Some(WPD_DEVICE_TYPE_MEDIA_PLAYER.0 as u32);
+    if matches!(dev_type, Some(t) if t == WPD_DEVICE_TYPE_CAMERA.0 as u32 || t == WPD_DEVICE_TYPE_AUDIO_RECORDER.0 as u32 || t == WPD_DEVICE_TYPE_VIDEO.0 as u32)
+        || (player && !usb_vendor(id).is_some_and(crate::cable::is_phone_vendor))
+    {
         return None;
     }
     let platform = super::platform_from_manufacturer(&manufacturer);
@@ -274,4 +285,17 @@ unsafe fn read_device_properties(pid: PCWSTR) -> Option<(Option<u32>, Option<Str
     })();
     let _ = device.Close();
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vendor_comes_from_the_device_path() {
+        let path = r"\?\usb#vid_04e8&pid_6860&ms_comp_mtp&samsung_android#7&2c398ede&0&0000#{6ac27878-a6fa-4155-ba85-f98f491d4f33}";
+        assert_eq!(usb_vendor(path), Some(0x04E8));
+        assert_eq!(usb_vendor(r"\?\SWD#WPDBUSENUM#{1234}"), None);
+        assert_eq!(usb_vendor(r"\?\usb#vid_zz"), None);
+    }
 }

@@ -11,9 +11,10 @@ use windows::Win32::Devices::DeviceAndDriverInstallation::{
 };
 
 /// "File transfer" (MTP) interfaces of phones that Windows could not give a driver to. Seen on a PC
-/// whose Windows had lost wpdusb.sys: every Android phone stayed invisible in Explorer and in
-/// SwitchFlow's install button, with "Error 0xe0000217" in setupapi.dev.log. Returns their
-/// device instance ids; the caller reports only ids that persist, not ones still being installed.
+/// where an old third-party driver package for USB\MS_COMP_MTP outranked Microsoft's wpdmtp.inf
+/// and then failed ("Error 0xe0000217" in setupapi.dev.log): every Android phone stayed invisible
+/// in Explorer and in SwitchFlow's install button. Returns their device instance ids; the caller
+/// reports only ids that persist, not ones still being installed.
 pub fn mtp_without_driver() -> Vec<String> {
     let mut out = Vec::new();
     unsafe {

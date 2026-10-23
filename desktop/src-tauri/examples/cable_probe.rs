@@ -30,6 +30,9 @@ fn main() {
     #[cfg(windows)]
     if std::env::args().any(|a| a == "--mtp") {
         println!("MTP interfaces without a driver: {:?}", switchflow_lib::discovery::setupapi::mtp_without_driver());
+        for d in switchflow_lib::discovery::wpd::Watcher::new().poll() {
+            println!("WPD: {} {:?} {} {} {}", d.id, d.platform, d.manufacturer, d.model, d.status);
+        }
     }
     #[cfg(windows)]
     if std::env::args().any(|a| a == "--usbflags") {

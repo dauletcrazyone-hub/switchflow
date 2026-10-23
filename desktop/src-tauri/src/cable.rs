@@ -172,6 +172,11 @@ const ANDROID_VIDS: [u16; 22] = [
     0x0E8D, // MediaTek phones (also Tecno, Infinix, itel)
 ];
 
+/// Whether a USB vendor id belongs to an Android phone maker.
+pub fn is_phone_vendor(vid: u16) -> bool {
+    ANDROID_VIDS.contains(&vid)
+}
+
 fn is_accessory(vid: u16, pid: u16) -> bool {
     vid == GOOGLE_VID && ACCESSORY_PIDS.contains(&pid)
 }
