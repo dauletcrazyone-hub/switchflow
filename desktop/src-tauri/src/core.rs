@@ -766,17 +766,21 @@ impl Core {
                 }
                 inv.albums.truncate(500);
                 // Only single-file categories (contacts) can be picked entry by entry.
+                inv.scanned_ms = now_ms();
                 if inv.items.len() == 1 && cat == Category::Contacts {
                     inv.entries.truncate(MAX_ENTRIES);
+                    // The phone's id is the card's position in this export. The PC adds the count's
+                    // time, so a pick made on an older count (contacts added or removed since) can
+                    // never select other people by position.
+                    inv.entries.retain(|e| e.id.parse::<u32>().is_ok());
                     for e in &mut inv.entries {
-                        e.id = e.id.chars().take(16).collect();
+                        e.id = format!("{}:{}", inv.scanned_ms, e.id.parse::<u32>().unwrap_or(0));
                         e.name = e.name.chars().filter(|c| !c.is_control()).take(120).collect();
                         e.detail = e.detail.chars().filter(|c| !c.is_control()).take(80).collect();
                     }
                 } else {
                     inv.entries.clear();
                 }
-                inv.scanned_ms = now_ms();
                 d.scanning.remove(&cat);
                 tracing::info!(category = cat.as_str(), count = inv.count, "inventory received");
                 d.inventory.insert(cat, inv);

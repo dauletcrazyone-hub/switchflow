@@ -60,7 +60,7 @@ function AlbumPicker({ category, albums }: { category: Category; albums: Album[]
 const CONTACTS_SHOWN = 300;
 
 /** Picks contacts one by one from the source's export (the PC sends only these to the other phone). */
-export function ContactPicker({ deviceId, total }: { deviceId: string; total: number }) {
+export function ContactPicker({ deviceId, total, scannedMs }: { deviceId: string; total: number; scannedMs: number }) {
   const t = useT();
   const backend = useApp((s) => s.backend);
   const selected = useApp((s) => s.selection.albums.contacts ?? null);
@@ -68,6 +68,17 @@ export function ContactPicker({ deviceId, total }: { deviceId: string; total: nu
   const [open, setOpen] = useState(selected !== null);
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [query, setQuery] = useState("");
+  const [recounted, setRecounted] = useState(false);
+  // A new count may list other contacts at the same positions: drop the old list and the old picks
+  // (the PC refuses them anyway) instead of silently sending other people.
+  useEffect(() => {
+    setEntries(null);
+    const sel = useApp.getState().selection.albums.contacts;
+    if (sel && sel.some((id) => !id.startsWith(`${scannedMs}:`))) {
+      setAlbums("contacts", []);
+      setRecounted(true);
+    }
+  }, [scannedMs, setAlbums]);
   useEffect(() => {
     if (!open || entries) return;
     let live = true;
@@ -114,6 +125,7 @@ export function ContactPicker({ deviceId, total }: { deviceId: string; total: nu
       </div>
       {open && (
         <div className="space-y-2">
+          {recounted && <p className="text-caption text-warning">{t("select.contactsRecounted")}</p>}
           <input
             type="search"
             value={query}
@@ -320,7 +332,7 @@ export function CategoryCard({
               {inventory?.permission === "limited" && <p className="text-callout text-warning">{t("select.limitedHint")}</p>}
               {transferable && inventory && inventory.albums.length > 0 && <AlbumPicker category={category} albums={inventory.albums} />}
               {transferable && category === "contacts" && sourceId && (inventory?.entryCount ?? 0) > 0 && (
-                <ContactPicker deviceId={sourceId} total={inventory!.count} />
+                <ContactPicker deviceId={sourceId} total={inventory!.count} scannedMs={inventory!.scannedMs} />
               )}
               {transferable && category === "contacts" && <ContactsPolicyPicker />}
             </div>

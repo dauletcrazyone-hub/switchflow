@@ -177,6 +177,12 @@ pub fn is_phone_vendor(vid: u16) -> bool {
     ANDROID_VIDS.contains(&vid)
 }
 
+/// Whether `failures` polls in a row without a USB device list mean a stuck phone (not a phone
+/// that is just re-enumerating after the switch, which showed a false warning for a few seconds).
+fn stuck_after(failures: usize) -> bool {
+    failures >= 2
+}
+
 fn is_accessory(vid: u16, pid: u16) -> bool {
     vid == GOOGLE_VID && ACCESSORY_PIDS.contains(&pid)
 }
@@ -192,6 +198,9 @@ pub struct Cable {
     /// (Windows code 43, "device descriptor request failed"): every other phone was then unreachable
     /// too, until that phone's cable was unplugged.
     stuck: AtomicBool,
+    /// Polls in a row that could not list USB devices. One failure is normal while a phone is
+    /// re-enumerating after a switch; only a repeated one means a phone is stuck.
+    list_failures: AtomicUsize,
     /// When each accessory-mode device first appeared, to let Windows finish starting it first.
     first_seen: Mutex<HashMap<(u8, u8), std::time::Instant>>,
     /// iPhones (usbmuxd device ids) with a running link.
@@ -214,6 +223,7 @@ impl Cable {
             linked: Mutex::new(Vec::new()),
             phones: AtomicUsize::new(0),
             stuck: AtomicBool::new(false),
+            list_failures: AtomicUsize::new(0),
             first_seen: Mutex::default(),
             linked_iphones: Mutex::default(),
             #[cfg(windows)]
@@ -283,10 +293,7 @@ impl Cable {
     pub fn switch_phones(&self) -> usize {
         use rusb::UsbContext;
         let Some(ctx) = &self.ctx else { return 0 };
-        let Ok(list) = ctx.devices() else {
-            self.stuck.store(true, Ordering::Relaxed);
-            return 0;
-        };
+        let Ok(list) = ctx.devices() else { return 0 };
         let mut switched = 0;
         for dev in list.iter() {
             let Ok(desc) = dev.device_descriptor() else { continue };
@@ -324,12 +331,13 @@ impl Cable {
         self.poll_iphones(core);
         let Some(ctx) = &self.ctx else { return };
         let Ok(list) = ctx.devices() else {
-            if !self.stuck.swap(true, Ordering::Relaxed) {
+            let failures = self.list_failures.fetch_add(1, Ordering::Relaxed) + 1;
+            if stuck_after(failures) && !self.stuck.swap(true, Ordering::Relaxed) {
                 tracing::warn!("cable: USB device list unavailable (a phone may be stuck mid-switch)");
             }
-            self.phones.store(0, Ordering::Relaxed);
             return;
         };
+        self.list_failures.store(0, Ordering::Relaxed);
         self.stuck.store(false, Ordering::Relaxed);
         let mut phones = 0;
         let mut present = Vec::new();
@@ -812,6 +820,14 @@ mod tests {
     }
 
     #[cfg(windows)]
+    #[test]
+    fn one_failed_device_list_is_not_a_stuck_phone() {
+        // A phone re-enumerating after the switch makes one list fail; that showed a false
+        // "phone stuck on USB" warning for a few seconds (Galaxy A25).
+        assert!(!stuck_after(1));
+        assert!(stuck_after(2));
+    }
+
     #[test]
     fn usbflags_keys_follow_the_phone_revision() {
         // Galaxy S22: bcdDevice 0x0504 in normal mode and in accessory mode.

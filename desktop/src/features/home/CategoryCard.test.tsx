@@ -89,15 +89,15 @@ describe("ContactPicker", () => {
   // test contacts could not be sent without the owner's whole address book.
   it("sends only the contacts found and picked", async () => {
     const getEntries = vi.fn().mockResolvedValue([
-      { id: "0", name: "Мама", detail: "+77010000000" },
-      { id: "1", name: "SwitchFlow Test Алия", detail: "+77030000001" },
-      { id: "2", name: "SwitchFlow Test Бахыт", detail: "+77030000002" },
+      { id: "7:0", name: "Мама", detail: "+77010000000" },
+      { id: "7:1", name: "SwitchFlow Test Алия", detail: "+77030000001" },
+      { id: "7:2", name: "SwitchFlow Test Бахыт", detail: "+77030000002" },
     ]);
     useApp.setState({
       backend: { getEntries } as never,
       selection: { categories: ["contacts"], albums: {}, contactsPolicy: "merge", includePrevious: false },
     });
-    render(<ContactPicker deviceId="a25" total={3} />);
+    const view = render(<ContactPicker deviceId="a25" total={3} scannedMs={7} />);
     expect(screen.getByText(/Все контакты: 3/)).toBeTruthy();
     fireEvent.click(screen.getByText("Выбрать отдельные"));
     await waitFor(() => expect(screen.getByText("Мама")).toBeTruthy());
@@ -107,7 +107,12 @@ describe("ContactPicker", () => {
     expect(screen.queryByText("Мама")).toBeNull();
     fireEvent.click(screen.getByText("Только найденные (2)"));
     expect(screen.getByText(/Выбрано 2 из 3/)).toBeTruthy();
-    expect(toSelections(useApp.getState().selection)).toEqual([{ category: "contacts", albumIds: null, entryIds: ["1", "2"] }]);
+    expect(toSelections(useApp.getState().selection)).toEqual([{ category: "contacts", albumIds: null, entryIds: ["7:1", "7:2"] }]);
+
+    // A new count: positions may now be other people, so the old picks are dropped, not sent.
+    view.rerender(<ContactPicker deviceId="a25" total={3} scannedMs={8} />);
+    expect(toSelections(useApp.getState().selection)).toEqual([{ category: "contacts", albumIds: null, entryIds: [] }]);
+    expect(screen.getByText(/пересчитаны/)).toBeTruthy();
 
     fireEvent.click(screen.getByText("Все контакты"));
     expect(toSelections(useApp.getState().selection)).toEqual([{ category: "contacts", albumIds: null, entryIds: null }]);

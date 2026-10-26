@@ -367,20 +367,35 @@ async fn only_picked_contacts_reach_the_target() {
             { "id": "1", "name": "SwitchFlow Test Алия", "detail": "+77030000001" },
             { "id": "2", "name": "SwitchFlow Test Бахыт" }
         ] }]});
-    src.post("/v1/inventory", inv).await;
-    assert_eq!(core.entries("android-4", Category::Contacts).unwrap().len(), 3);
+    src.post("/v1/inventory", inv.clone()).await;
+    let entries = core.entries("android-4", Category::Contacts).unwrap();
+    assert_eq!(entries.len(), 3);
     let summary = core.snapshot().devices.into_iter().find(|d| d.info.id == "android-4").unwrap().inventory;
     assert_eq!(summary[0].entry_count, 3);
+    let picked: Vec<String> = entries.iter().filter(|e| e.name.starts_with("SwitchFlow Test")).map(|e| e.id.clone()).collect();
+    let pick = |ids: Vec<String>| StartRequest {
+        kind: SessionKind::Transfer,
+        selections: vec![CategorySelection { category: Category::Contacts, album_ids: None, entry_ids: Some(ids) }],
+        contacts_policy: None,
+        backup_path: None,
+        include_previously_transferred: false,
+    };
 
-    let sid = core
-        .start_session(StartRequest {
-            kind: SessionKind::Transfer,
-            selections: vec![CategorySelection { category: Category::Contacts, album_ids: None, entry_ids: Some(vec!["1".into(), "2".into()]) }],
-            contacts_policy: None,
-            backup_path: None,
-            include_previously_transferred: false,
-        })
-        .unwrap();
+    // A new count (the phone's contacts may have changed): picks from the old one are refused,
+    // because a position could now be another person.
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    src.post("/v1/inventory", inv).await;
+    let err = core.start_session(pick(picked.clone())).unwrap_err();
+    assert!(matches!(err, switchflow_lib::error::Fault::State("contacts_changed")), "{err:?}");
+
+    let picked: Vec<String> = core
+        .entries("android-4", Category::Contacts)
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.name.starts_with("SwitchFlow Test"))
+        .map(|e| e.id)
+        .collect();
+    let sid = core.start_session(pick(picked)).unwrap();
     prepare_ok(&mut tgt).await;
     wait_state(&core, SessionState::Running).await;
     let contacts = core.snapshot().session.unwrap().categories.into_iter().find(|c| c.category == Category::Contacts).unwrap();

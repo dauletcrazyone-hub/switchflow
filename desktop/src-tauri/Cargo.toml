@@ -5,7 +5,7 @@ description = "SwitchFlow — premium phone data transfer for Windows"
 authors = ["SwitchFlow"]
 license = "Proprietary"
 edition = "2021"
-rust-version = "1.80"
+rust-version = "1.82"
 
 [lib]
 name = "switchflow_lib"

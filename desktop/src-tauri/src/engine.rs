@@ -148,11 +148,10 @@ impl Core {
                             return Err(Fault::State("not_scanned"));
                         };
                         // Contacts picked one by one: positions of the cards to keep.
-                        let picked: Option<Vec<u32>> = sel.entry_ids.as_ref().filter(|_| !inv.entries.is_empty()).map(|ids| {
-                            let mut v: Vec<u32> = inv.entries.iter().filter(|e| ids.contains(&e.id)).filter_map(|e| e.id.parse().ok()).collect();
-                            v.sort_unstable();
-                            v
-                        });
+                        let picked = match &sel.entry_ids {
+                            Some(ids) if !inv.entries.is_empty() => Some(picked_positions(ids, inv.scanned_ms, inv.entries.len())?),
+                            _ => None,
+                        };
                         if picked.as_ref().is_some_and(|p| p.is_empty()) {
                             continue;
                         }
@@ -597,46 +596,40 @@ impl Core {
             (staging.join(format!("{key}.part")), it.only_entries.clone())
         };
         let (part, only) = part;
-        let hashed = {
-            let part = part.clone();
-            tokio::task::spawn_blocking(move || crate::checksum::sha256_file(&part))
-                .await
-                .map_err(|e| Fault::Io(e.to_string()))?
-        };
-        // The phone sent every contact; keep only the picked cards (verified upload first).
-        let picked = match (&hashed, only) {
-            (Ok((h, n)), Some(keep)) if *h == sha && *n == size => {
-                let part = part.clone();
-                let r = tokio::task::spawn_blocking(move || -> std::io::Result<(PathBuf, String, u64, u32)> {
-                    let text = String::from_utf8_lossy(&std::fs::read(&part)?).into_owned();
-                    let (kept, count) = crate::vcard::keep_cards(&text, &keep.into_iter().collect());
-                    let out = part.with_extension("picked");
-                    std::fs::write(&out, kept.as_bytes())?;
-                    let (h, n) = crate::checksum::sha256_file(&out)?;
-                    std::fs::remove_file(&part)?;
-                    Ok((out, h, n, count))
-                })
-                .await
-                .map_err(|e| Fault::Io(e.to_string()))?;
-                Some(r.map_err(|e| Fault::Io(e.kind().to_string()))?)
-            }
-            _ => None,
+        // Verify the upload, then (contacts picked one by one) keep only the picked cards. Every
+        // outcome reaches the block below, which clears `busy`: an early return here left the item
+        // busy for good, so the phone could never finish it.
+        let checked = {
+            let (part, sha) = (part.clone(), sha.clone());
+            tokio::task::spawn_blocking(move || -> std::io::Result<Option<Verified>> {
+                let (h, n) = crate::checksum::sha256_file(&part)?;
+                if h != sha || n != size {
+                    return Ok(None);
+                }
+                let Some(keep) = only else { return Ok(Some((part, h, n, None))) };
+                let text = String::from_utf8_lossy(&std::fs::read(&part)?).into_owned();
+                let (kept, count) = crate::vcard::keep_cards(&text, &keep.into_iter().collect());
+                let out = part.with_extension("picked");
+                std::fs::write(&out, kept.as_bytes())?;
+                let (h, n) = crate::checksum::sha256_file(&out)?;
+                std::fs::remove_file(&part)?;
+                Ok(Some((out, h, n, Some(count))))
+            })
+            .await
+            .map_err(|e| std::io::Error::other(e.to_string()))
+            .and_then(|r| r)
         };
         let result = self.mutate(|st| {
             let Some(s) = st.session.as_mut().filter(|s| s.id == sid) else { return Err(Fault::Cancelled) };
             let it = s.item_mut(key).ok_or(Fault::NotFound)?;
             it.busy = false;
-            match &hashed {
-                Ok((h, n)) if *h == sha && *n == size => {
+            match checked {
+                Ok(Some((file, sha, size, count))) => {
                     let bin = part.with_extension("bin");
-                    let (from, sha, size) = match &picked {
-                        Some((file, h, n, count)) => {
-                            it.item_count = Some(*count);
-                            (file.clone(), h.clone(), *n)
-                        }
-                        None => (part.clone(), sha.clone(), size),
-                    };
-                    std::fs::rename(&from, &bin)?;
+                    std::fs::rename(&file, &bin)?;
+                    if count.is_some() {
+                        it.item_count = count;
+                    }
                     it.state = ItemState::Staged;
                     it.size = size;
                     it.received = size;
@@ -645,7 +638,7 @@ impl Core {
                     s.bump_items();
                     Ok(())
                 }
-                Ok(_) => {
+                Ok(None) => {
                     tracing::warn!(key, "upload checksum mismatch, restarting item");
                     let _ = std::fs::remove_file(&part);
                     it.state = ItemState::Pending;
@@ -1136,6 +1129,28 @@ impl Core {
             self.notify_ui();
         }
     }
+}
+
+/// A verified upload ready to stage: file, SHA-256, size, and the contact count when cards were picked.
+type Verified = (PathBuf, String, u64, Option<u32>);
+
+/// Card positions for picked contact ids (`<count time>:<position>`). Ids from an older count are
+/// refused: the phone's contacts may have changed since, and positions would pick other people.
+fn picked_positions(ids: &[String], scanned_ms: i64, entries: usize) -> FResult<Vec<u32>> {
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        let (scan, pos) = id.split_once(':').ok_or(Fault::BadRequest("entry_ids"))?;
+        if scan.parse::<i64>().ok() != Some(scanned_ms) {
+            return Err(Fault::State("contacts_changed"));
+        }
+        let pos: u32 = pos.parse().map_err(|_| Fault::BadRequest("entry_ids"))?;
+        if (pos as usize) < entries {
+            out.push(pos);
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
+    Ok(out)
 }
 
 fn new_item(index: usize, si: &SourceItem, album_name: Option<String>) -> Item {
