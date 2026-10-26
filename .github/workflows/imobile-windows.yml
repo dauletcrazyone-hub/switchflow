@@ -1,0 +1,118 @@
+# Builds idevicerestore and the libimobiledevice tools for Windows from the official sources
+# (github.com/libimobiledevice), the way their README recommends: MSYS2, MinGW 64-bit.
+# The result is a GitHub release that desktop/src-tauri/windows/fetch-imobile.ps1 downloads
+# and checks by SHA-256; the installer ships it next to SwitchFlow ("iPhone firmware" screen).
+name: iPhone tools for Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/imobile-windows.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      # Exact commits of the official repositories (master on 2026-10-27).
+      LIBPLIST: fe3dc34dc3484006e12b403f7ceb06f0ad40b6f4
+      GLUE: 10ddafa16458a012bcbd3e83a6ab36a032dc84d8
+      LIBUSBMUXD: 93eb168bf6b07472d17781328c21df0c60300524
+      LIBTATSU: e7d6ad13ef928aa609d0ccdfc586f7d6e8e049bf
+      LIBIMOBILEDEVICE: fa0f79190142bc309307967c058f89c1b36eb6b8
+      LIBIRECOVERY: 93c117c29b1f6669bc4ceca8b84e1df06449fe33
+      IDEVICERESTORE: 4b3e847e1d9a1210049a9e3f1d1caa38650c6617
+    steps:
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git make autoconf automake libtool pkgconf zip
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-libzip
+            mingw-w64-x86_64-curl
+            mingw-w64-x86_64-readline
+
+      - name: Build from the official sources
+        run: |
+          set -e
+          build() {
+            local repo=$1 sha=$2; shift 2
+            git clone --quiet "https://github.com/libimobiledevice/$repo.git"
+            cd "$repo"
+            git checkout --quiet "$sha"
+            echo "::group::$repo $(git describe --tags --always)"
+            ./autogen.sh --prefix=/mingw64 --disable-static "$@"
+            make -j4
+            make install
+            echo "::endgroup::"
+            cd ..
+          }
+          build libplist "$LIBPLIST" --without-cython
+          build libimobiledevice-glue "$GLUE"
+          build libusbmuxd "$LIBUSBMUXD"
+          build libtatsu "$LIBTATSU"
+          build libimobiledevice "$LIBIMOBILEDEVICE" --without-cython
+          build libirecovery "$LIBIRECOVERY"
+          build idevicerestore "$IDEVICERESTORE"
+
+      - name: Package the tools with the DLLs they need
+        run: |
+          set -e
+          out=imobile
+          mkdir -p "$out"
+          for t in idevicerestore irecovery ideviceenterrecovery ideviceinfo idevice_id idevicediagnostics; do
+            cp "/mingw64/bin/$t.exe" "$out/"
+          done
+          # Every MinGW DLL the tools load (system DLLs stay out).
+          for f in "$out"/*.exe; do
+            ldd "$f" | awk '/\/mingw64\/bin\// {print $3}'
+          done | sort -u | while read -r dll; do cp "$dll" "$out/"; done
+          for r in libplist libimobiledevice-glue libusbmuxd libtatsu libimobiledevice libirecovery idevicerestore; do
+            (cd "$r" && echo "$r $(git rev-parse HEAD)") >> "$out/SOURCES.txt"
+            for l in COPYING COPYING.LESSER LICENSE; do
+              [ -f "$r/$l" ] && cp "$r/$l" "$out/LICENSE-$r-$l" || true
+            done
+          done
+          ls -la "$out"
+
+      - name: Check the tools start without MSYS2 on PATH
+        shell: cmd
+        run: |
+          set PATH=C:\Windows\system32;C:\Windows
+          cd imobile
+          idevicerestore.exe --help > nul || exit /b 1
+          irecovery.exe --help > nul || exit /b 1
+          ideviceinfo.exe --help > nul || exit /b 1
+          echo tools start
+
+      - name: Zip
+        run: |
+          cd imobile && zip -qr ../imobile-tools-win-x64.zip . && cd ..
+          sha256sum imobile-tools-win-x64.zip | tee imobile-tools-win-x64.zip.sha256
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: imobile-tools-win-x64
+          path: |
+            imobile-tools-win-x64.zip
+            imobile-tools-win-x64.zip.sha256
+
+      - name: Publish as a release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="imobile-tools-${{ github.run_number }}"
+          gh release create "$tag" imobile-tools-win-x64.zip imobile-tools-win-x64.zip.sha256 \
+            --repo "${{ github.repository }}" --title "iPhone tools for Windows #${{ github.run_number }}" \
+            --notes "idevicerestore and libimobiledevice tools built from the official sources; commits in SOURCES.txt."
