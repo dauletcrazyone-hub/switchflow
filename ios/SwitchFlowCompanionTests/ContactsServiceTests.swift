@@ -17,7 +17,7 @@ final class ContactsServiceTests: XCTestCase {
     func testPickListFollowsTheExportOrder() throws {
         let contacts = [
             contact("Алия", "Нурланова", phone: "+77030000001"),
-            contact("", org: "ТОО Ромашка", email: "info@example.kz"),
+            contact("", email: "info@example.kz", org: "ТОО Ромашка"),
             contact("Бахыт"),
         ]
         let entries = ContactsService.entries(contacts)
