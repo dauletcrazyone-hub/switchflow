@@ -143,8 +143,6 @@ const ACCESSORY_VERSION: &str = "1";
 const GOOGLE_VID: u16 = 0x18D1;
 /// How long an accessory-mode device must be on the bus before the link opens it.
 const SETTLE: Duration = Duration::from_secs(2);
-/// How long the switch keeps the phone open after ACCESSORY_START (see `switch_to_accessory`).
-const SWITCH_HOLD: Duration = Duration::from_millis(1500);
 /// Accessory, accessory+ADB, and the audio variants.
 const ACCESSORY_PIDS: [u16; 6] = [0x2D00, 0x2D01, 0x2D02, 0x2D03, 0x2D04, 0x2D05];
 /// Phone makers (USB vendor ids). Opening a device through UsbDk briefly takes it away from its
@@ -556,10 +554,8 @@ fn switch_to_accessory(dev: &rusb::Device<rusb::Context>) -> rusb::Result<u16> {
     }
     // ACCESSORY_START: the phone disconnects and comes back as 18D1:2D0x.
     h.write_control(0x40, 53, 0, 0, &[], TIMEOUT)?;
-    // Closing the handle gives the device back to its Windows driver with a port reset. When the
-    // "File transfer" driver is bound, that reset lands mid-switch: the A10 stayed in MTP mode and
-    // the S22 failed to enumerate (code 43). Holding the handle lets the phone leave on its own.
-    std::thread::sleep(SWITCH_HOLD);
+    // Close right away, while the phone is still there. Keeping the handle until the phone has left
+    // hangs the close inside UsbDk, and every USB device list after it fails (Galaxy A25, A10).
     drop(h);
     Ok(protocol)
 }

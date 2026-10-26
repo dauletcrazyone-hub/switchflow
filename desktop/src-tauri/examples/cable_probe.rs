@@ -68,7 +68,9 @@ fn main() {
             }
             h.write_control(0x40, 53, 0, 0, &[], t).expect("start");
             println!("switched {id}, AOA protocol {}", u16::from_le_bytes(ver));
-            // `--watch`: keep the handle open and print the phone-maker devices every 500 ms.
+            // Close at once: holding the handle until the phone leaves hangs UsbDk (see cable.rs).
+            drop(h);
+            // `--watch`: print the phone-maker devices every 500 ms.
             if args.iter().any(|a| a == "--watch") {
                 for i in 0..16 {
                     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -84,7 +86,6 @@ fn main() {
                         .unwrap_or_else(|e| vec![format!("list failed: {e}")]);
                     println!("{} ms: {:?}", (i + 1) * 500, seen);
                 }
-                drop(h);
             }
         }
     }
