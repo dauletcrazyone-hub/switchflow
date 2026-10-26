@@ -21,7 +21,7 @@ final class ContactsServiceTests: XCTestCase {
             contact("Бахыт"),
         ]
         let entries = ContactsService.entries(contacts)
-        XCTAssertEqual(entries.map(\.id), ["0", "1", "2"])
+        XCTAssertEqual(entries.map { $0.id }, ["0", "1", "2"])
         XCTAssertEqual(entries[0].detail, "+77030000001")
         XCTAssertEqual(entries[1].name, "ТОО Ромашка", "a company card shows its company name")
         XCTAssertEqual(entries[1].detail, "info@example.kz")
