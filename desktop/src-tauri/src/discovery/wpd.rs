@@ -196,6 +196,31 @@ unsafe fn object_name(props: &IPortableDeviceProperties, id: &str) -> String {
         .unwrap_or_default()
 }
 
+/// A VT_LPWSTR PROPVARIANT owning a CoTaskMemAlloc copy of `s`. PROPVARIANT's Drop frees the
+/// string with PropVariantClear, so it must never point at Rust memory: a Vec buffer there was
+/// freed twice and crashed the app (heap corruption) when replacing an earlier SwitchFlow.apk.
+unsafe fn lpwstr_variant(s: &str) -> Option<windows::Win32::System::Com::StructuredStorage::PROPVARIANT> {
+    use windows::Win32::System::Com::CoTaskMemAlloc;
+    use windows::Win32::System::Com::StructuredStorage::{PROPVARIANT, PROPVARIANT_0, PROPVARIANT_0_0, PROPVARIANT_0_0_0};
+    let wide: Vec<u16> = s.encode_utf16().chain(std::iter::once(0)).collect();
+    let buf = CoTaskMemAlloc(wide.len() * 2) as *mut u16;
+    if buf.is_null() {
+        return None;
+    }
+    std::ptr::copy_nonoverlapping(wide.as_ptr(), buf, wide.len());
+    Some(PROPVARIANT {
+        Anonymous: PROPVARIANT_0 {
+            Anonymous: std::mem::ManuallyDrop::new(PROPVARIANT_0_0 {
+                vt: windows::Win32::System::Variant::VT_LPWSTR,
+                wReserved1: 0,
+                wReserved2: 0,
+                wReserved3: 0,
+                Anonymous: PROPVARIANT_0_0_0 { pwszVal: PWSTR(buf) },
+            }),
+        },
+    })
+}
+
 unsafe fn push(dev: &IPortableDevice, file_name: &str, data: &[u8]) -> Result<(), PushError> {
     let content = dev.Content().map_err(|_| PushError::Failed)?;
     let props = content.Properties().map_err(|_| PushError::Failed)?;
@@ -211,21 +236,7 @@ unsafe fn push(dev: &IPortableDevice, file_name: &str, data: &[u8]) -> Result<()
     if !old.is_empty() {
         let ids: IPortableDevicePropVariantCollection = CoCreateInstance(&PortableDevicePropVariantCollection, None, CLSCTX_INPROC_SERVER).map_err(|_| PushError::Failed)?;
         for o in &old {
-            use windows::Win32::System::Com::StructuredStorage::{PROPVARIANT, PROPVARIANT_0, PROPVARIANT_0_0, PROPVARIANT_0_0_0};
-            // A VT_LPWSTR pointing at our own buffer: Add() makes its own copy, and PROPVARIANT
-            // here has no Drop, so the buffer is never freed by COM.
-            let mut wide: Vec<u16> = o.encode_utf16().chain(std::iter::once(0)).collect();
-            let v = PROPVARIANT {
-                Anonymous: PROPVARIANT_0 {
-                    Anonymous: std::mem::ManuallyDrop::new(PROPVARIANT_0_0 {
-                        vt: windows::Win32::System::Variant::VT_LPWSTR,
-                        wReserved1: 0,
-                        wReserved2: 0,
-                        wReserved3: 0,
-                        Anonymous: PROPVARIANT_0_0_0 { pwszVal: PWSTR(wide.as_mut_ptr()) },
-                    }),
-                },
-            };
+            let v = lpwstr_variant(o).ok_or(PushError::Failed)?;
             let _ = ids.Add(&v);
         }
         let _ = content.Delete(PORTABLE_DEVICE_DELETE_NO_RECURSION.0 as u32, &ids, std::ptr::null_mut());
@@ -290,6 +301,15 @@ unsafe fn read_device_properties(pid: PCWSTR) -> Option<(Option<u32>, Option<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn object_id_variant_is_freed_by_com_only() {
+        // Dropping must free the CoTaskMemAlloc copy exactly once (a Rust buffer here crashed the app).
+        for _ in 0..1000 {
+            let v = unsafe { lpwstr_variant("o1A2B3C4") }.unwrap();
+            assert_eq!(v.to_string(), "o1A2B3C4");
+        }
+    }
 
     #[test]
     fn vendor_comes_from_the_device_path() {
