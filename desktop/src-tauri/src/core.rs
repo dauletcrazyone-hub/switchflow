@@ -22,6 +22,10 @@ use tokio::sync::watch;
 pub const PAIR_SECRET_TTL: Duration = Duration::from_secs(600);
 pub const PAIR_REQUEST_TTL: Duration = Duration::from_secs(120);
 pub const DEVICE_TIMEOUT: Duration = Duration::from_secs(15);
+/// How long a phone may be offline before it gives up its source/target slot to a connected phone.
+/// Long enough for a Wi-Fi blip or an app restart, and for remembered phones to check in after the
+/// PC app starts.
+pub const SLOT_GRACE: Duration = Duration::from_secs(60);
 const MAX_BAD_SECRETS: u32 = 5;
 const MAX_PENDING_REQUESTS: usize = 4;
 const MAX_DEVICES: usize = 8;
@@ -529,16 +533,7 @@ impl Core {
             r.status = PairStatus::Approved;
             r.token = Some(token);
             tracing::info!(platform = req.device.platform.key(), "device paired");
-            // Fill the empty slot: the first phone becomes the source, the second the target.
-            let id = req.device.id.clone();
-            let is_slotted = st.source_id.as_deref() == Some(&id) || st.target_id.as_deref() == Some(&id);
-            if !is_slotted {
-                if st.source_id.is_none() {
-                    st.source_id = Some(id);
-                } else if st.target_id.is_none() {
-                    st.target_id = Some(id);
-                }
-            }
+            st.take_slot(&req.device.id);
             st.sync_roles();
             self.save_devices(st);
             Ok(())
@@ -580,7 +575,13 @@ impl Core {
             if let Some(id) = &hb.instance_id {
                 d.instance_id = Some(id.chars().take(64).collect());
             }
-            Ok::<_, Fault>((was_lost, restarted, d.role))
+            // A remembered phone that comes back takes a slot left free (or held by an offline phone).
+            if was_lost && st.take_slot(device_id) {
+                st.sync_roles();
+                self.save_devices(st);
+            }
+            let role = st.devices.get(device_id).map_or(Role::None, |d| d.role);
+            Ok::<_, Fault>((was_lost, restarted, role))
         })?;
         if reconnected.0 {
             tracing::info!("device reconnected");
@@ -613,6 +614,10 @@ impl Core {
                 if Instant::now() > s.expires {
                     st.pairing.secret = None;
                 }
+            }
+            if st.free_stale_slots() {
+                st.sync_roles();
+                self.save_devices(&st);
             }
         }
         for id in &lost {
@@ -805,6 +810,45 @@ impl Core {
 }
 
 impl State {
+    /// Frees the source/target slot of a phone offline for longer than `SLOT_GRACE`, so the card
+    /// does not show a phone that is not there (found with a Galaxy A10 left as "source" for days
+    /// while an iPhone was plugged in). Never during a session: a dropped phone is awaited there.
+    fn free_stale_slots(&mut self) -> bool {
+        if self.session.as_ref().is_some_and(|s| !s.state.is_finished()) {
+            return false;
+        }
+        let stale = |id: &Option<String>| {
+            id.as_ref()
+                .and_then(|i| self.devices.get(i))
+                .is_some_and(|d| !d.connected && d.last_seen.elapsed() > SLOT_GRACE)
+        };
+        let (free_source, free_target) = (stale(&self.source_id), stale(&self.target_id));
+        if free_source {
+            self.source_id = None;
+        }
+        if free_target {
+            self.target_id = None;
+        }
+        free_source || free_target
+    }
+
+    /// Puts a phone into the first free slot: the first phone becomes the source, the second the
+    /// target. Returns whether a slot changed.
+    fn take_slot(&mut self, id: &str) -> bool {
+        if self.source_id.as_deref() == Some(id) || self.target_id.as_deref() == Some(id) {
+            return false;
+        }
+        self.free_stale_slots();
+        if self.source_id.is_none() {
+            self.source_id = Some(id.to_string());
+        } else if self.target_id.is_none() {
+            self.target_id = Some(id.to_string());
+        } else {
+            return false;
+        }
+        true
+    }
+
     /// Sends `role` commands so each phone knows what it is.
     pub fn sync_roles(&mut self) {
         let src = self.source_id.clone();
@@ -994,6 +1038,60 @@ mod tests {
         assert!(!st.devices["a"].connected, "offline until the phone checks in");
         assert_eq!((st.source_id.as_deref(), st.target_id.as_deref()), (Some("b"), Some("a")));
         assert_eq!(st.devices["a"].role, Role::Target);
+    }
+
+    #[test]
+    fn an_offline_phone_gives_up_its_slot() {
+        let (core, _d) = test_core();
+        let ta = pair(&core, "a");
+        let hb = || Heartbeat { storage_free_bytes: 0, storage_total_bytes: 0, battery_percent: None, charging: None, app_state: None, instance_id: None };
+        // Restarted PC: "a" is remembered as the source but has not checked in yet.
+        let core = restart(core);
+        core.check_liveness();
+        assert_eq!(core.lock().source_id.as_deref(), Some("a"), "kept while it may still come back");
+
+        core.lock().devices.get_mut("a").unwrap().last_seen = Instant::now() - SLOT_GRACE - Duration::from_secs(1);
+        core.check_liveness();
+        assert_eq!(core.lock().source_id, None);
+        assert_eq!(core.lock().devices["a"].role, Role::None);
+
+        // A new phone takes the free source slot; "a" coming back becomes the target.
+        let _tb = pair(&core, "b");
+        assert_eq!(core.authenticate(&ta).unwrap(), "a");
+        assert_eq!(core.heartbeat("a", hb(), false).unwrap(), Role::Target);
+        let st = core.lock();
+        assert_eq!((st.source_id.as_deref(), st.target_id.as_deref()), (Some("b"), Some("a")));
+    }
+
+    #[test]
+    fn a_phone_dropped_mid_session_keeps_its_slot() {
+        let (core, _d) = test_core();
+        pair(&core, "a");
+        let mut st = core.lock();
+        st.devices.get_mut("a").unwrap().connected = false;
+        st.devices.get_mut("a").unwrap().last_seen = Instant::now() - SLOT_GRACE * 2;
+        assert!(st.free_stale_slots());
+        st.source_id = Some("a".into());
+        use crate::session::{Endpoint, Session, SessionKind, SessionState};
+        st.session = Some(Session {
+            id: "s".into(),
+            kind: SessionKind::Backup,
+            source: Endpoint::Device { id: "a".into(), name: "A".into(), model: "A".into(), platform: Platform::Android },
+            target: Endpoint::Folder { path: "backup".into() },
+            categories: vec![],
+            contacts_policy: Default::default(),
+            state: SessionState::Running,
+            items: vec![],
+            preflight: vec![],
+            started_ms: 0,
+            finished_ms: None,
+            staging_dir: "staging".into(),
+            error: None,
+            target_prepare: None,
+            rt: Default::default(),
+        });
+        assert!(!st.free_stale_slots(), "an unfinished session waits for the phone");
+        assert_eq!(st.source_id.as_deref(), Some("a"));
     }
 
     #[test]
