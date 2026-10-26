@@ -6,6 +6,7 @@ import type {
   AppInfo,
   BackupInfo,
   Category,
+  Entry,
   HistoryEntry,
   PairingInfo,
   Settings,
@@ -60,6 +61,7 @@ export class TauriBackend implements Backend {
   getSettings = () => invoke<Settings>("get_settings");
   updateSettings = (settings: Settings) => invoke<Settings>("update_settings", { settings });
   listBackups = () => invoke<BackupInfo[]>("list_backups");
+  getEntries = (device: string, category: Category) => invoke<Entry[]>("get_entries", { device, category });
   getAppInfo = () => invoke<AppInfo>("get_app_info");
   revealPath = (path: string) => invoke<void>("reveal_path", { path });
   adbReverse = (serial: string) => invoke<void>("adb_reverse", { serial });

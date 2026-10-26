@@ -147,6 +147,15 @@ impl Core {
                         let Some(inv) = dev.inventory.get(&sel.category) else {
                             return Err(Fault::State("not_scanned"));
                         };
+                        // Contacts picked one by one: positions of the cards to keep.
+                        let picked: Option<Vec<u32>> = sel.entry_ids.as_ref().filter(|_| !inv.entries.is_empty()).map(|ids| {
+                            let mut v: Vec<u32> = inv.entries.iter().filter(|e| ids.contains(&e.id)).filter_map(|e| e.id.parse().ok()).collect();
+                            v.sort_unstable();
+                            v
+                        });
+                        if picked.as_ref().is_some_and(|p| p.is_empty()) {
+                            continue;
+                        }
                         for si in &inv.items {
                             if let Some(albums) = &sel.album_ids {
                                 if !si.album_ids.iter().any(|a| albums.contains(a)) {
@@ -159,6 +168,10 @@ impl Core {
                                 .and_then(|a| inv.albums.iter().find(|x| &x.id == a))
                                 .map(|a| a.name.clone());
                             let mut item = new_item(items.len(), si, album_name);
+                            if let Some(p) = &picked {
+                                item.item_count = Some(p.len() as u32);
+                                item.only_entries = Some(p.clone());
+                            }
                             if let Some(tid) = target.device_id() {
                                 let k = Ledger::key(tid, sid, si.category, &si.id, si.size);
                                 if !req.include_previously_transferred && ledger.contains(&k) {
@@ -581,13 +594,33 @@ impl Core {
                 return Err(Fault::OffsetMismatch(it.received));
             }
             it.busy = true;
-            staging.join(format!("{key}.part"))
+            (staging.join(format!("{key}.part")), it.only_entries.clone())
         };
+        let (part, only) = part;
         let hashed = {
             let part = part.clone();
             tokio::task::spawn_blocking(move || crate::checksum::sha256_file(&part))
                 .await
                 .map_err(|e| Fault::Io(e.to_string()))?
+        };
+        // The phone sent every contact; keep only the picked cards (verified upload first).
+        let picked = match (&hashed, only) {
+            (Ok((h, n)), Some(keep)) if *h == sha && *n == size => {
+                let part = part.clone();
+                let r = tokio::task::spawn_blocking(move || -> std::io::Result<(PathBuf, String, u64, u32)> {
+                    let text = String::from_utf8_lossy(&std::fs::read(&part)?).into_owned();
+                    let (kept, count) = crate::vcard::keep_cards(&text, &keep.into_iter().collect());
+                    let out = part.with_extension("picked");
+                    std::fs::write(&out, kept.as_bytes())?;
+                    let (h, n) = crate::checksum::sha256_file(&out)?;
+                    std::fs::remove_file(&part)?;
+                    Ok((out, h, n, count))
+                })
+                .await
+                .map_err(|e| Fault::Io(e.to_string()))?;
+                Some(r.map_err(|e| Fault::Io(e.kind().to_string()))?)
+            }
+            _ => None,
         };
         let result = self.mutate(|st| {
             let Some(s) = st.session.as_mut().filter(|s| s.id == sid) else { return Err(Fault::Cancelled) };
@@ -596,11 +629,18 @@ impl Core {
             match &hashed {
                 Ok((h, n)) if *h == sha && *n == size => {
                     let bin = part.with_extension("bin");
-                    std::fs::rename(&part, &bin)?;
+                    let (from, sha, size) = match &picked {
+                        Some((file, h, n, count)) => {
+                            it.item_count = Some(*count);
+                            (file.clone(), h.clone(), *n)
+                        }
+                        None => (part.clone(), sha.clone(), size),
+                    };
+                    std::fs::rename(&from, &bin)?;
                     it.state = ItemState::Staged;
                     it.size = size;
                     it.received = size;
-                    it.sha256 = Some(sha.clone());
+                    it.sha256 = Some(sha);
                     it.staged_path = Some(bin);
                     s.bump_items();
                     Ok(())
@@ -1111,6 +1151,7 @@ fn new_item(index: usize, si: &SourceItem, album_name: Option<String>) -> Item {
         modified_ms: si.modified_ms,
         album_name,
         item_count: si.item_count,
+        only_entries: None,
         state: ItemState::Pending,
         reason: None,
         failed_at: None,

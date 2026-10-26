@@ -10,7 +10,7 @@ import { formatNumber } from "../../i18n";
 import { deviceTitle } from "../../lib/device";
 import { formatBytes, formatDate } from "../../lib/format";
 import { motionTokens } from "../../lib/ui";
-import { useApp, useT } from "../../state/store";
+import { toSelections, useApp, useT } from "../../state/store";
 import { CategoryPanel } from "../home/CategoryPanel";
 import { useSlots } from "../home/DeviceStage";
 
@@ -44,7 +44,7 @@ export function BackupsScreen() {
     const id = await run((b) =>
       b.startSession({
         kind: "backup",
-        selections: selection.categories.map((c) => ({ category: c, albumIds: selection.albums[c] ?? null })),
+        selections: toSelections(selection),
       }),
     );
     setStarting(false);

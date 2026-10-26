@@ -1,7 +1,7 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useApp } from "../../state/store";
-import { CategoryCard } from "./CategoryCard";
+import { toSelections, useApp } from "../../state/store";
+import { CategoryCard, ContactPicker } from "./CategoryCard";
 
 beforeEach(() => useApp.setState({ lang: "ru" }));
 afterEach(cleanup);
@@ -81,5 +81,35 @@ describe("CategoryCard", () => {
     );
     expect(screen.getByText("Файлы не выбраны — отметьте снова, чтобы выбрать")).toBeTruthy();
     expect(screen.queryByText("Нет доступа")).toBeNull();
+  });
+});
+
+describe("ContactPicker", () => {
+  // Found on a real Galaxy A25 -> iPhone 11 test: only "all 1901 contacts" could be moved, so three
+  // test contacts could not be sent without the owner's whole address book.
+  it("sends only the contacts found and picked", async () => {
+    const getEntries = vi.fn().mockResolvedValue([
+      { id: "0", name: "Мама", detail: "+77010000000" },
+      { id: "1", name: "SwitchFlow Test Алия", detail: "+77030000001" },
+      { id: "2", name: "SwitchFlow Test Бахыт", detail: "+77030000002" },
+    ]);
+    useApp.setState({
+      backend: { getEntries } as never,
+      selection: { categories: ["contacts"], albums: {}, contactsPolicy: "merge", includePrevious: false },
+    });
+    render(<ContactPicker deviceId="a25" total={3} />);
+    expect(screen.getByText(/Все контакты: 3/)).toBeTruthy();
+    fireEvent.click(screen.getByText("Выбрать отдельные"));
+    await waitFor(() => expect(screen.getByText("Мама")).toBeTruthy());
+    expect(getEntries).toHaveBeenCalledWith("a25", "contacts");
+
+    fireEvent.change(screen.getByLabelText("Поиск по имени, номеру или почте"), { target: { value: "switchflow test" } });
+    expect(screen.queryByText("Мама")).toBeNull();
+    fireEvent.click(screen.getByText("Только найденные (2)"));
+    expect(screen.getByText(/Выбрано 2 из 3/)).toBeTruthy();
+    expect(toSelections(useApp.getState().selection)).toEqual([{ category: "contacts", albumIds: null, entryIds: ["1", "2"] }]);
+
+    fireEvent.click(screen.getByText("Все контакты"));
+    expect(toSelections(useApp.getState().selection)).toEqual([{ category: "contacts", albumIds: null, entryIds: null }]);
   });
 });

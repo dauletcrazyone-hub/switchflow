@@ -21,6 +21,7 @@ pub mod snapshot;
 pub mod storage;
 pub mod tls;
 pub mod usbmux;
+pub mod vcard;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -125,6 +126,7 @@ pub fn run() {
             commands::get_settings,
             commands::update_settings,
             commands::list_backups,
+            commands::get_entries,
             commands::get_app_info,
             commands::reveal_path,
             commands::adb_reverse,

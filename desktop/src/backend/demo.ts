@@ -8,6 +8,7 @@ import {
   type CategorySummary,
   type DeviceInfo,
   type DeviceView,
+  type Entry,
   type HistoryEntry,
   type PairingInfo,
   type PreflightCheck,
@@ -79,7 +80,7 @@ function inventoryFor(platform: DeviceInfo["platform"], category: Category): Cat
     case "videos":
       return { ...base, count: 184, totalBytes: Math.round(14.2 * GB) };
     case "contacts":
-      return { ...base, count: 642, totalBytes: 410 * 1024 };
+      return { ...base, count: 642, totalBytes: 410 * 1024, entryCount: 642 };
     case "documents":
       return { ...base, count: 23, totalBytes: 180 * MB };
     case "music":
@@ -343,10 +344,13 @@ export class DemoBackend implements Backend {
         count = albums.reduce((n, a) => n + a.count, 0);
         bytes = albums.reduce((n, a) => n + a.totalBytes, 0);
       }
+      if (s.entryIds) count = s.entryIds.length;
       const files = s.category === "contacts" || s.category === "calendars" ? 1 : count;
       return { category: s.category, count: files, bytes, doneBytes: 0, failing: s.category === "photos" ? 3 : 0 };
     });
-    const logical = new Map(req.selections.map((s) => [s.category, src?.inventory.find((i) => i.category === s.category)?.count ?? 1]));
+    const logical = new Map(
+      req.selections.map((s) => [s.category, s.entryIds?.length ?? src?.inventory.find((i) => i.category === s.category)?.count ?? 1]),
+    );
 
     const session: SessionView = {
       id: `demo-${Date.now()}`,
@@ -605,6 +609,17 @@ export class DemoBackend implements Backend {
     this.settings = { ...s };
     return { ...s };
   };
+  getEntries = async (_device: string, category: Category): Promise<Entry[]> => {
+    if (category !== "contacts") return [];
+    const first = ["Алия", "Бахыт", "Гульнар", "Данияр", "Ерлан", "Жанна", "Зарина", "Ильяс", "Камила", "Марат", "Нурлан", "Сауле"];
+    const last = ["Ахметов", "Беков", "Ермеков", "Жумабаев", "Касымов", "Омаров", "Сейткали", "Тулегенов"];
+    return Array.from({ length: 642 }, (_, i) => ({
+      id: String(i),
+      name: `${first[i % first.length]} ${last[Math.floor(i / first.length) % last.length]}`,
+      detail: `+7 701 ${String(1000000 + i * 7919).slice(-7)}`,
+    }));
+  };
+
   listBackups = async (): Promise<BackupInfo[]> => [
     {
       path: "C:\\Users\\Demo\\Documents\\SwitchFlow Backups\\Galaxy S21 — 2025-09-02 18-40",

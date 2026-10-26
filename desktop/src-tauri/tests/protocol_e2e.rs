@@ -215,8 +215,8 @@ async fn full_transfer_with_recovery() {
         .start_session(StartRequest {
             kind: SessionKind::Transfer,
             selections: vec![
-                CategorySelection { category: Category::Photos, album_ids: None },
-                CategorySelection { category: Category::Contacts, album_ids: None },
+                CategorySelection { category: Category::Photos, album_ids: None, entry_ids: None },
+                CategorySelection { category: Category::Contacts, album_ids: None, entry_ids: None },
             ],
             contacts_policy: None,
             backup_path: None,
@@ -301,7 +301,7 @@ async fn full_transfer_with_recovery() {
     // Repeating the same transfer skips everything already delivered (ledger).
     core.start_session(StartRequest {
         kind: SessionKind::Transfer,
-        selections: vec![CategorySelection { category: Category::Photos, album_ids: Some(vec!["cam".into()]) }],
+        selections: vec![CategorySelection { category: Category::Photos, album_ids: Some(vec!["cam".into()]), entry_ids: None }],
         contacts_policy: None,
         backup_path: None,
         include_previously_transferred: false,
@@ -318,7 +318,7 @@ async fn full_transfer_with_recovery() {
     let sid = core
         .start_session(StartRequest {
             kind: SessionKind::Transfer,
-            selections: vec![CategorySelection { category: Category::Photos, album_ids: None }],
+            selections: vec![CategorySelection { category: Category::Photos, album_ids: None, entry_ids: None }],
             contacts_policy: None,
             backup_path: None,
             include_previously_transferred: true,
@@ -346,6 +346,58 @@ async fn full_transfer_with_recovery() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn only_picked_contacts_reach_the_target() {
+    let (core, base, fp, _dir) = start_server().await;
+    let mut src = pair(&core, &base, &fp, "android-4", "android").await;
+    let mut tgt = pair(&core, &base, &fp, "ios-4", "ios").await;
+    src.wait_for("role").await;
+    tgt.wait_for("role").await;
+
+    core.request_scan(vec![Category::Contacts]).unwrap();
+    src.wait_for("scan").await;
+    let vcf = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Личный Контакт\r\nTEL:+70000000000\r\nEND:VCARD\r\n\
+               BEGIN:VCARD\r\nVERSION:3.0\r\nFN:SwitchFlow Test Алия\r\nTEL:+77030000001\r\nEND:VCARD\r\n\
+               BEGIN:VCARD\r\nVERSION:3.0\r\nFN:SwitchFlow Test Бахыт\r\nTEL:+77030000002\r\nEND:VCARD\r\n"
+        .as_bytes()
+        .to_vec();
+    let inv = json!({ "categories": [{ "category": "contacts", "permission": "granted", "count": 3, "totalBytes": 0,
+        "items": [{ "id": "contacts", "category": "contacts", "name": "contacts.vcf", "size": vcf.len(), "mime": "text/vcard", "itemCount": 3 }],
+        "entries": [
+            { "id": "0", "name": "Личный Контакт", "detail": "+70000000000" },
+            { "id": "1", "name": "SwitchFlow Test Алия", "detail": "+77030000001" },
+            { "id": "2", "name": "SwitchFlow Test Бахыт" }
+        ] }]});
+    src.post("/v1/inventory", inv).await;
+    assert_eq!(core.entries("android-4", Category::Contacts).unwrap().len(), 3);
+    let summary = core.snapshot().devices.into_iter().find(|d| d.info.id == "android-4").unwrap().inventory;
+    assert_eq!(summary[0].entry_count, 3);
+
+    let sid = core
+        .start_session(StartRequest {
+            kind: SessionKind::Transfer,
+            selections: vec![CategorySelection { category: Category::Contacts, album_ids: None, entry_ids: Some(vec!["1".into(), "2".into()]) }],
+            contacts_policy: None,
+            backup_path: None,
+            include_previously_transferred: false,
+        })
+        .unwrap();
+    prepare_ok(&mut tgt).await;
+    wait_state(&core, SessionState::Running).await;
+    let contacts = core.snapshot().session.unwrap().categories.into_iter().find(|c| c.category == Category::Contacts).unwrap();
+    assert_eq!(contacts.logical_total, 2, "progress counts the picked contacts, not the whole book");
+
+    let up = src.wait_for("upload").await;
+    let key = up["items"][0]["key"].as_str().unwrap().to_string();
+    upload(&src, &sid, &key, &vcf, 64).await;
+    let got = deliver(&tgt, &sid, 1, None).await;
+    let text = String::from_utf8(got[0].1.clone()).unwrap();
+    assert!(text.contains("SwitchFlow Test Алия") && text.contains("SwitchFlow Test Бахыт"));
+    assert!(!text.contains("Личный Контакт"), "a contact that was not picked never leaves the PC");
+    assert_eq!(text.matches("BEGIN:VCARD").count(), 2);
+    wait_state(&core, SessionState::Completed).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn backup_then_restore() {
     let (core, base, fp, dir) = start_server().await;
     let mut src = pair(&core, &base, &fp, "android-2", "android").await;
@@ -368,7 +420,7 @@ async fn backup_then_restore() {
     let sid = core
         .start_session(StartRequest {
             kind: SessionKind::Backup,
-            selections: vec![CategorySelection { category: Category::Photos, album_ids: None }],
+            selections: vec![CategorySelection { category: Category::Photos, album_ids: None, entry_ids: None }],
             contacts_policy: None,
             backup_path: None,
             include_previously_transferred: false,
@@ -395,7 +447,7 @@ async fn backup_then_restore() {
 
     core.start_session(StartRequest {
         kind: SessionKind::Restore,
-        selections: vec![CategorySelection { category: Category::Photos, album_ids: None }],
+        selections: vec![CategorySelection { category: Category::Photos, album_ids: None, entry_ids: None }],
         contacts_policy: None,
         backup_path: Some(backups[0].path.clone()),
         include_previously_transferred: false,
@@ -435,7 +487,7 @@ async fn app_restart_gets_its_work_again() {
     let sid = core
         .start_session(StartRequest {
             kind: SessionKind::Transfer,
-            selections: vec![CategorySelection { category: Category::Photos, album_ids: None }],
+            selections: vec![CategorySelection { category: Category::Photos, album_ids: None, entry_ids: None }],
             contacts_policy: None,
             backup_path: None,
             include_previously_transferred: false,

@@ -8,6 +8,7 @@ import {
   EMPTY_SNAPSHOT,
   isBackendError,
   type Category,
+  type CategorySelection,
   type ContactsPolicy,
   type HistoryEntry,
   type Settings,
@@ -25,10 +26,17 @@ export interface Toast {
 
 export interface Selection {
   categories: Category[];
-  /** `null` or missing = all albums. */
+  /** `null` or missing = all albums; for contacts, the contacts picked one by one. */
   albums: Partial<Record<Category, string[] | null>>;
   contactsPolicy: ContactsPolicy;
   includePrevious: boolean;
+}
+
+/** What the UI picked, as the backend takes it: for contacts the picked ids are contacts, not albums. */
+export function toSelections(sel: Selection): CategorySelection[] {
+  return sel.categories.map((c) =>
+    c === "contacts" ? { category: c, albumIds: null, entryIds: sel.albums[c] ?? null } : { category: c, albumIds: sel.albums[c] ?? null },
+  );
 }
 
 interface AppState {

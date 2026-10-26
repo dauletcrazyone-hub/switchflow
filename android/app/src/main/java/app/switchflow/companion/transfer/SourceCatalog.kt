@@ -47,7 +47,11 @@ class SourceCatalog(private val context: Context) {
                 val file = File(exportDir, "contacts.vcf").apply { writeText(VCardCodec.write(cards), Charsets.UTF_8) }
                 files[Category.CONTACTS] = file
                 val item = SourceItem(Category.CONTACTS, category, "contacts.vcf", file.length(), mime = "text/vcard", itemCount = cards.size)
-                CategoryInventory(category, permission, cards.size.toLong(), file.length(), items = if (cards.isEmpty()) emptyList() else listOf(item))
+                CategoryInventory(
+                    category, permission, cards.size.toLong(), file.length(),
+                    items = if (cards.isEmpty()) emptyList() else listOf(item),
+                    entries = VCardCodec.entries(cards),
+                )
             }
             Category.CALENDARS -> {
                 val events = CalendarRepo(context).exportAll()

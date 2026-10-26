@@ -41,6 +41,16 @@ data class Address(
 )
 
 object VCardCodec {
+    /**
+     * The pick list for the PC: one entry per card `write` puts in the file, in the same order, so
+     * entry `i` is the i-th card (the PC keeps only the chosen ones). Name plus a phone or e-mail
+     * to tell apart people with the same name.
+     */
+    fun entries(cards: List<VCard>): List<app.switchflow.companion.net.Entry> =
+        cards.filter { !it.isEmpty() }.mapIndexed { i, c ->
+            app.switchflow.companion.net.Entry(i.toString(), c.displayName, c.phones.firstOrNull()?.value ?: c.emails.firstOrNull()?.value ?: "")
+        }
+
     // ------------------------------------------------------------ writing
 
     fun write(cards: List<VCard>): String = buildString {

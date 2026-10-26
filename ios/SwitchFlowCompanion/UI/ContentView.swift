@@ -19,6 +19,7 @@ func localized(_ key: String) -> LocalizedStringKey { LocalizedStringKey(key) }
 struct ContentView: View {
     @EnvironmentObject var c: CompanionController
     @State private var scanning = false
+    @State private var confirmRemove = false
 
     var body: some View {
         ZStack {
@@ -37,6 +38,7 @@ struct ContentView: View {
                         }
                     }
                     .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)), removal: .opacity))
+                    addedContactsCard
                 }
                 .padding(22)
                 .animation(.spring(response: 0.42, dampingFraction: 0.86), value: c.phase)
@@ -155,6 +157,27 @@ struct ContentView: View {
             Text("originals_safe").font(.caption).foregroundStyle(Color.sfText2)
             Button(role: .destructive) { c.disconnect() } label: { Text("disconnect") }
                 .padding(.top, 6)
+        }
+    }
+
+    /// One tap removes the contacts SwitchFlow created here, after a confirmation.
+    @ViewBuilder private var addedContactsCard: some View {
+        if c.addedContacts > 0 || c.removedContacts != nil || c.removeFailed {
+            card {
+                VStack(alignment: .leading, spacing: 10) {
+                    if c.addedContacts > 0 {
+                        Text("added_contacts \(c.addedContacts)").font(.headline)
+                        Text("added_contacts_hint").font(.caption).foregroundStyle(Color.sfText2)
+                        Button(role: .destructive) { confirmRemove = true } label: { Text("remove_added") }
+                            .buttonStyle(.bordered)
+                    }
+                    if let n = c.removedContacts { Text("removed_contacts \(n)").font(.callout).foregroundStyle(Color.sfSuccess) }
+                    if c.removeFailed { Text("remove_failed").font(.callout).foregroundStyle(Color.sfDanger) }
+                }
+            }
+            .confirmationDialog(Text("remove_added_confirm \(c.addedContacts)"), isPresented: $confirmRemove, titleVisibility: .visible) {
+                Button(role: .destructive) { c.removeAddedContacts() } label: { Text("remove_added") }
+            }
         }
     }
 

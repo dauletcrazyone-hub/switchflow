@@ -2,6 +2,7 @@ import type {
   AppInfo,
   BackupInfo,
   Category,
+  Entry,
   HistoryEntry,
   PairingInfo,
   Settings,
@@ -42,6 +43,8 @@ export interface Backend {
   getSettings(): Promise<Settings>;
   updateSettings(settings: Settings): Promise<Settings>;
   listBackups(): Promise<BackupInfo[]>;
+  /** The source's contacts from its last count, for picking them one by one. */
+  getEntries(device: string, category: Category): Promise<Entry[]>;
   getAppInfo(): Promise<AppInfo>;
   revealPath(path: string): Promise<void>;
   adbReverse(serial: string): Promise<void>;

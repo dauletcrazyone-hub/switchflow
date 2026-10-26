@@ -5,7 +5,7 @@ import { Button } from "../../components/ui/Button";
 import { Badge } from "../../components/ui/Controls";
 import { formatNumber } from "../../i18n";
 import { motionTokens } from "../../lib/ui";
-import { useApp, useT } from "../../state/store";
+import { toSelections, useApp, useT } from "../../state/store";
 import { CategoryPanel } from "./CategoryPanel";
 import { DeviceStage, useSlots } from "./DeviceStage";
 import { PairingSheet } from "./PairingSheet";
@@ -84,7 +84,7 @@ function SetupView() {
     await run((b) =>
       b.startSession({
         kind: "transfer",
-        selections: selection.categories.map((c) => ({ category: c, albumIds: selection.albums[c] ?? null })),
+        selections: toSelections(selection),
         contactsPolicy: selection.contactsPolicy,
         includePreviouslyTransferred: selection.includePrevious,
       }),

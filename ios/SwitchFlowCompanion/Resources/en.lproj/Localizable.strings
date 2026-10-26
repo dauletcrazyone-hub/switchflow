@@ -34,3 +34,9 @@
 "keep_open" = "Keep the app open and the iPhone unlocked until the transfer finishes.";
 "originals_safe" = "Originals on this iPhone are never changed or deleted.";
 "disconnect" = "Disconnect";
+"added_contacts %lld" = "Contacts added by SwitchFlow: %lld";
+"added_contacts_hint" = "You can remove exactly these — your other contacts, and those that only got new numbers, stay as they are.";
+"remove_added" = "Remove added contacts";
+"remove_added_confirm %lld" = "Remove %lld contacts added by SwitchFlow?";
+"removed_contacts %lld" = "Contacts removed: %lld";
+"remove_failed" = "Could not remove the contacts. Check Contacts access in Settings.";

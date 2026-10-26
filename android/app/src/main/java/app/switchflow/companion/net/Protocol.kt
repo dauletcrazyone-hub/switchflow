@@ -93,6 +93,10 @@ data class SourceItem(
 @Serializable
 data class Album(val id: String, val name: String, val count: Long, val totalBytes: Long)
 
+/** One contact in the exported vCard, so the PC can offer a pick list. `id` is the card's position. */
+@Serializable
+data class Entry(val id: String, val name: String, val detail: String = "")
+
 @Serializable
 data class CategoryInventory(
     val category: String,
@@ -102,6 +106,7 @@ data class CategoryInventory(
     val albums: List<Album> = emptyList(),
     val items: List<SourceItem> = emptyList(),
     val note: String? = null,
+    val entries: List<Entry> = emptyList(),
 )
 
 @Serializable

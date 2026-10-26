@@ -31,6 +31,7 @@ const MAX_PENDING_REQUESTS: usize = 4;
 const MAX_DEVICES: usize = 8;
 const MAX_QUEUED_COMMANDS: usize = 256;
 pub const MAX_INVENTORY_ITEMS: usize = 250_000;
+const MAX_ENTRIES: usize = 50_000;
 
 #[derive(Debug, Clone)]
 pub struct Paths {
@@ -764,6 +765,17 @@ impl Core {
                     a.name = a.name.chars().filter(|c| !c.is_control()).take(120).collect();
                 }
                 inv.albums.truncate(500);
+                // Only single-file categories (contacts) can be picked entry by entry.
+                if inv.items.len() == 1 && cat == Category::Contacts {
+                    inv.entries.truncate(MAX_ENTRIES);
+                    for e in &mut inv.entries {
+                        e.id = e.id.chars().take(16).collect();
+                        e.name = e.name.chars().filter(|c| !c.is_control()).take(120).collect();
+                        e.detail = e.detail.chars().filter(|c| !c.is_control()).take(80).collect();
+                    }
+                } else {
+                    inv.entries.clear();
+                }
                 inv.scanned_ms = now_ms();
                 d.scanning.remove(&cat);
                 tracing::info!(category = cat.as_str(), count = inv.count, "inventory received");
@@ -771,6 +783,13 @@ impl Core {
             }
             Ok(())
         })
+    }
+
+    /// The contacts of a phone's last count, for the pick list in the UI.
+    pub fn entries(&self, device_id: &str, category: Category) -> FResult<Vec<crate::model::Entry>> {
+        let st = self.lock();
+        let d = st.devices.get(device_id).ok_or(Fault::NotFound)?;
+        Ok(d.inventory.get(&category).map(|i| i.entries.clone()).unwrap_or_default())
     }
 
     // --------------------------------------------------------------- USB list

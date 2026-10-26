@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronDown, Info, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { Album, Category, CategorySummary, CompatStatus } from "../../backend/types";
+import type { Album, Category, CategorySummary, CompatStatus, Entry } from "../../backend/types";
 import { CategoryIcon } from "../../components/CategoryIcon";
 import { Badge, Checkbox, Segmented, Skeleton } from "../../components/ui/Controls";
 import { Button } from "../../components/ui/Button";
@@ -56,6 +56,110 @@ function AlbumPicker({ category, albums }: { category: Category; albums: Album[]
   );
 }
 
+/** Rows rendered at once; the search narrows a big address book. */
+const CONTACTS_SHOWN = 300;
+
+/** Picks contacts one by one from the source's export (the PC sends only these to the other phone). */
+export function ContactPicker({ deviceId, total }: { deviceId: string; total: number }) {
+  const t = useT();
+  const backend = useApp((s) => s.backend);
+  const selected = useApp((s) => s.selection.albums.contacts ?? null);
+  const setAlbums = useApp((s) => s.setAlbums);
+  const [open, setOpen] = useState(selected !== null);
+  const [entries, setEntries] = useState<Entry[] | null>(null);
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    if (!open || entries) return;
+    let live = true;
+    backend
+      .getEntries(deviceId, "contacts")
+      .then((e) => live && setEntries(e))
+      .catch(() => live && setEntries([]));
+    return () => {
+      live = false;
+    };
+  }, [open, entries, backend, deviceId]);
+
+  const q = query.trim().toLowerCase();
+  const found = (entries ?? []).filter((e) => !q || e.name.toLowerCase().includes(q) || e.detail.toLowerCase().includes(q));
+  const isOn = (id: string) => selected === null || selected.includes(id);
+  const toggle = (id: string) => {
+    const current = selected ?? (entries ?? []).map((e) => e.id);
+    const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
+    setAlbums("contacts", entries && next.length === entries.length ? null : next);
+  };
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="text-caption font-semibold text-text-2">
+          {t("select.contactsWhich")} ·{" "}
+          {selected === null ? t("select.contactsAll", { count: total }) : t("select.contactsPicked", { count: selected.length, total })}
+        </span>
+        {open ? (
+          <button
+            className="text-caption font-medium text-accent hover:underline"
+            onClick={() => {
+              setAlbums("contacts", null);
+              setOpen(false);
+            }}
+          >
+            {t("select.contactsEveryone")}
+          </button>
+        ) : (
+          <button className="text-caption font-medium text-accent hover:underline" onClick={() => setOpen(true)}>
+            {t("select.contactsPick")}
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="space-y-2">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("select.contactsSearch")}
+            aria-label={t("select.contactsSearch")}
+            className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-callout outline-none focus:border-accent"
+          />
+          <div className="flex gap-3">
+            <button
+              className="text-caption font-medium text-accent hover:underline disabled:opacity-50"
+              disabled={found.length === 0}
+              onClick={() => setAlbums("contacts", found.map((e) => e.id))}
+            >
+              {t("select.contactsOnlyFound", { count: found.length })}
+            </button>
+            <button className="text-caption font-medium text-accent hover:underline" onClick={() => setAlbums("contacts", [])}>
+              {t("select.contactsNone")}
+            </button>
+          </div>
+          {entries === null ? (
+            <Skeleton className="h-24 w-full" />
+          ) : found.length === 0 ? (
+            <p className="text-callout text-text-3">{t("select.contactsNotFound")}</p>
+          ) : (
+            <div className="max-h-72 overflow-y-auto rounded-xl border border-line">
+              {found.slice(0, CONTACTS_SHOWN).map((e) => (
+                <label
+                  key={e.id}
+                  className="flex cursor-default items-center gap-2.5 px-2.5 py-1.5 transition-colors hover:bg-line"
+                  onClick={() => toggle(e.id)}
+                >
+                  <Checkbox checked={isOn(e.id)} label={e.name} size={18} onChange={() => toggle(e.id)} />
+                  <span className="min-w-0 flex-1 truncate text-callout">{e.name}</span>
+                  <span className="truncate text-caption text-text-3">{e.detail}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          {found.length > CONTACTS_SHOWN && <p className="text-caption text-text-3">{t("select.contactsMore", { count: CONTACTS_SHOWN })}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ContactsPolicyPicker() {
   const t = useT();
   const policy = useApp((s) => s.selection.contactsPolicy);
@@ -99,6 +203,7 @@ export function CategoryCard({
 }) {
   const t = useT();
   const lang = useApp((s) => s.lang);
+  const sourceId = useApp((s) => s.snapshot.sourceId);
   const [open, setOpen] = useState(false);
   // If the phone has not answered for a while (prompt dismissed, app closed), offer to ask again.
   const [slowScan, setSlowScan] = useState(false);
@@ -214,6 +319,9 @@ export function CategoryCard({
               )}
               {inventory?.permission === "limited" && <p className="text-callout text-warning">{t("select.limitedHint")}</p>}
               {transferable && inventory && inventory.albums.length > 0 && <AlbumPicker category={category} albums={inventory.albums} />}
+              {transferable && category === "contacts" && sourceId && (inventory?.entryCount ?? 0) > 0 && (
+                <ContactPicker deviceId={sourceId} total={inventory!.count} />
+              )}
               {transferable && category === "contacts" && <ContactsPolicyPicker />}
             </div>
           </motion.div>

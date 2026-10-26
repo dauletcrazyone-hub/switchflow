@@ -42,12 +42,13 @@ actor SourceCatalog {
             return CategoryInventory(category: category, permission: permission, count: Int64(items.count),
                                      totalBytes: items.reduce(0) { $0 + $1.size }, albums: albums, items: items)
         case Category.contacts:
-            let (data, count) = try ContactsService.exportAll()
+            let (data, entries) = try ContactsService.exportAll()
+            let count = entries.count
             let url = exportDir.appendingPathComponent("contacts.vcf")
             try data.write(to: url, options: [.atomic, .completeFileProtection])
             files[Category.contacts] = url
             let item = SourceItem(id: Category.contacts, category: category, name: "contacts.vcf", size: Int64(data.count), mime: "text/vcard", itemCount: count)
-            return CategoryInventory(category: category, permission: permission, count: Int64(count), totalBytes: Int64(data.count), items: count > 0 ? [item] : [])
+            return CategoryInventory(category: category, permission: permission, count: Int64(count), totalBytes: Int64(data.count), items: count > 0 ? [item] : [], entries: entries)
         case Category.calendars:
             let events = CalendarService.exportAll()
             let data = try JSONEncoder().encode(CalendarExport(events: events))

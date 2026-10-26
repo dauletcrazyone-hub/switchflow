@@ -132,6 +132,10 @@ pub struct Item {
     pub modified_ms: Option<i64>,
     pub album_name: Option<String>,
     pub item_count: Option<u32>,
+    /// Positions of the cards to keep when only some contacts were picked (the phone sends the
+    /// whole vCard; the PC drops the rest before it is stored or delivered).
+    #[serde(default)]
+    pub only_entries: Option<Vec<u32>>,
     pub state: ItemState,
     /// Error or skip code (`already_transferred`, `duplicate`, `checksum_mismatch`, ...).
     pub reason: Option<String>,
@@ -505,6 +509,7 @@ mod tests {
             modified_ms: None,
             album_name: None,
             item_count: None,
+            only_entries: None,
             state,
             reason: None,
             failed_at: None,

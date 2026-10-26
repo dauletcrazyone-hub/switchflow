@@ -72,6 +72,20 @@ class VCardTest {
     }
 
     @Test
+    fun pickListEntriesFollowTheCardsInTheFile() {
+        val cards = listOf(
+            VCard(formattedName = "Алия", phones = listOf(Typed("+77030000001", "CELL"))),
+            VCard(), // empty: not written, so it gets no entry either
+            VCard(formattedName = "Гульнар", emails = listOf(Typed("g@example.com"))),
+        )
+        val entries = VCardCodec.entries(cards)
+        assertEquals(listOf("0" to "Алия", "1" to "Гульнар"), entries.map { it.id to it.name })
+        assertEquals(listOf("+77030000001", "g@example.com"), entries.map { it.detail })
+        val inFile = VCardCodec.parse(VCardCodec.write(cards))
+        assertEquals(entries.map { it.name }, inFile.map { it.displayName })
+    }
+
+    @Test
     fun skipsEmptyCardsAndNormalizesPhones() {
         assertTrue(VCardCodec.parse("BEGIN:VCARD\nVERSION:3.0\nEND:VCARD\n").isEmpty())
         assertEquals(VCardCodec.normalizePhone("+7 (701) 123-45-67"), VCardCodec.normalizePhone("87011234567"))

@@ -187,6 +187,16 @@ pub struct Album {
     pub total_bytes: u64,
 }
 
+/// One contact inside the exported vCard, for the pick list. `id` is the card's position in the file.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Entry {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub detail: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryInventory {
@@ -200,6 +210,9 @@ pub struct CategoryInventory {
     pub items: Vec<SourceItem>,
     #[serde(default)]
     pub note: Option<String>,
+    /// Contacts that can be picked one by one (fetched by the UI on demand, not in snapshots).
+    #[serde(default)]
+    pub entries: Vec<Entry>,
     /// Set by the PC when the inventory arrives (phones do not send it).
     #[serde(default, skip_deserializing)]
     pub scanned_ms: i64,
@@ -216,6 +229,8 @@ pub struct CategorySummary {
     pub albums: Vec<Album>,
     pub note: Option<String>,
     pub scanned_ms: i64,
+    /// How many entries can be picked one by one (0: only the whole category).
+    pub entry_count: u64,
 }
 
 impl From<&CategoryInventory> for CategorySummary {
@@ -228,6 +243,7 @@ impl From<&CategoryInventory> for CategorySummary {
             albums: c.albums.clone(),
             note: c.note.clone(),
             scanned_ms: c.scanned_ms,
+            entry_count: c.entries.len() as u64,
         }
     }
 }
@@ -253,13 +269,16 @@ pub struct PrepareResult {
     pub error: Option<String>,
 }
 
-/// Selection made in the UI: a category plus an optional album filter.
+/// Selection made in the UI: a category plus an optional album filter, or for contacts the
+/// entries picked one by one.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CategorySelection {
     pub category: Category,
     #[serde(default)]
     pub album_ids: Option<Vec<String>>,
+    #[serde(default)]
+    pub entry_ids: Option<Vec<String>>,
 }
 
 pub fn now_ms() -> i64 {

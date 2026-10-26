@@ -57,6 +57,15 @@ export interface CategorySummary {
   note: string | null;
   /** When the PC received this count (ms since epoch). */
   scannedMs: number;
+  /** Contacts that can be picked one by one (0 or missing: only all of them). */
+  entryCount?: number;
+}
+
+/** One contact in a phone's export, for the pick list. */
+export interface Entry {
+  id: string;
+  name: string;
+  detail: string;
 }
 
 export interface DeviceView {
@@ -205,6 +214,8 @@ export interface Snapshot {
 export interface CategorySelection {
   category: Category;
   albumIds: string[] | null;
+  /** Contacts picked one by one; `null` or missing = all. */
+  entryIds?: string[] | null;
 }
 
 export interface StartRequest {

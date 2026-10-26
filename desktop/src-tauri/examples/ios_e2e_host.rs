@@ -215,8 +215,8 @@ async fn scenario(core: Arc<Core>, out: PathBuf) -> R<serde_json::Value> {
         StartRequest {
             kind: SessionKind::Backup,
             selections: vec![
-                CategorySelection { category: Category::Photos, album_ids: None },
-                CategorySelection { category: Category::Contacts, album_ids: None },
+                CategorySelection { category: Category::Photos, album_ids: None, entry_ids: None },
+                CategorySelection { category: Category::Contacts, album_ids: None, entry_ids: None },
             ],
             contacts_policy: None,
             backup_path: None,
@@ -251,8 +251,8 @@ async fn scenario(core: Arc<Core>, out: PathBuf) -> R<serde_json::Value> {
     let restore_req = || StartRequest {
         kind: SessionKind::Restore,
         selections: vec![
-            CategorySelection { category: Category::Photos, album_ids: None },
-            CategorySelection { category: Category::Contacts, album_ids: None },
+            CategorySelection { category: Category::Photos, album_ids: None, entry_ids: None },
+            CategorySelection { category: Category::Contacts, album_ids: None, entry_ids: None },
         ],
         contacts_policy: Some(ContactsPolicy::Merge),
         backup_path: Some(restore_dir.clone()),

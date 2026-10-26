@@ -86,6 +86,13 @@ struct SourceItem: Codable {
 
 struct Album: Codable { let id: String; let name: String; let count: Int64; let totalBytes: Int64 }
 
+/// One contact in the exported vCard, so the PC can offer a pick list. `id` is the card's position.
+struct Entry: Codable, Equatable {
+    let id: String
+    let name: String
+    var detail: String = ""
+}
+
 struct CategoryInventory: Codable {
     let category: String
     let permission: String
@@ -94,6 +101,7 @@ struct CategoryInventory: Codable {
     var albums: [Album] = []
     var items: [SourceItem] = []
     var note: String?
+    var entries: [Entry] = []
 }
 
 struct InventoryBody: Encodable { let categories: [CategoryInventory] }

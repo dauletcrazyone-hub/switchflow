@@ -56,6 +56,12 @@ pub fn request_scan(core: Core_<'_>, categories: Vec<Category>) -> FResult<()> {
     core.request_scan(categories)
 }
 
+/// The contacts of the source's last count, for picking them one by one.
+#[tauri::command]
+pub fn get_entries(core: Core_<'_>, device: String, category: Category) -> FResult<Vec<crate::model::Entry>> {
+    core.entries(&device, category)
+}
+
 #[tauri::command]
 pub fn start_session(core: Core_<'_>, request: StartRequest) -> FResult<String> {
     core.start_session(request)

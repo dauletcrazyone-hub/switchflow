@@ -36,6 +36,11 @@ final class CompanionController: ObservableObject {
     @Published var askingAccess: [String]?   // categories the PC asked for
     @Published var askingDocuments = false
     @Published var viaCable = false
+    /// Contacts SwitchFlow created on this iPhone (they can be removed in one tap).
+    @Published var addedContacts = ContactsService.added.count
+    /// Result of the last removal, shown once.
+    @Published var removedContacts: Int?
+    @Published var removeFailed = false
 
     var foreground = true
     private var api: APIClient?
@@ -159,7 +164,22 @@ final class CompanionController: ObservableObject {
     }
 
     /// The app came to the foreground: make sure the PC can reach it over the cable again.
-    func becameActive() { cable.resume() }
+    func becameActive() {
+        cable.resume()
+        addedContacts = ContactsService.added.count
+    }
+
+    /// Deletes exactly the contacts this app created, after the user confirmed it on screen.
+    func removeAddedContacts() {
+        do {
+            removedContacts = try ContactsService.removeAdded()
+            removeFailed = false
+        } catch {
+            sfLog.error("removing added contacts failed")
+            removeFailed = true
+        }
+        addedContacts = ContactsService.added.count
+    }
 
     /// The cable carries what the QR code carries: pair without the camera, or reuse the pairing.
     private func onCableHello(_ raw: String) async {
@@ -406,6 +426,7 @@ final class CompanionController: ObservableObject {
         sessionTasks["down:\(sid)"] = Task {
             let end = await receiver.run(sid)
             transfer?.finished = end
+            addedContacts = ContactsService.added.count
             transfer?.currentName = nil
             sessionTasks["down:\(sid)"] = nil
             UIApplication.shared.isIdleTimerDisabled = false
