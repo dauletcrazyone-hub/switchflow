@@ -177,6 +177,21 @@ pub fn reveal_path(app: AppHandle, core: Core_<'_>, path: PathBuf) -> FResult<()
     app.opener().open_path(canon.to_string_lossy(), None::<&str>).map_err(|_| Fault::Io("open_failed".into()))
 }
 
+/// Shows the iPhone app (unsigned .ipa shipped with the installer) in Explorer, to drag into
+/// Sideloadly or iLoader: iPhones only install apps signed for them, so the PC cannot do it itself.
+#[tauri::command]
+pub fn show_iphone_app(app: AppHandle) -> FResult<()> {
+    use tauri::Manager;
+    let ipa = app
+        .path()
+        .resolve("companion/SwitchFlow-iPhone.ipa", tauri::path::BaseDirectory::Resource)
+        .map_err(|_| Fault::State("iphone_app_missing"))?;
+    if !ipa.is_file() {
+        return Err(Fault::State("iphone_app_missing"));
+    }
+    app.opener().reveal_item_in_dir(&ipa).map_err(|_| Fault::Io("open_failed".into()))
+}
+
 /// Switches the connected Android phones into USB accessory mode: transfer over the cable without
 /// USB debugging and without the QR code. Returns how many phones switched.
 #[tauri::command]

@@ -3,7 +3,8 @@
   "bundle": {
     "resources": {
       "windows/drivers/UsbDk_x64.msi": "drivers/UsbDk_x64.msi",
-      "windows/companion/SwitchFlow.apk": "companion/SwitchFlow.apk"
+      "windows/companion/SwitchFlow.apk": "companion/SwitchFlow.apk",
+      "windows/companion/SwitchFlow-iPhone.ipa": "companion/SwitchFlow-iPhone.ipa"
     }
   }
 }

@@ -644,6 +644,7 @@ export class DemoBackend implements Backend {
   cableConnect = async () => 0;
   installCableDriver = async () => {};
   installCompanion = async () => {};
+  showIphoneApp = async () => {};
   resetIdentity = async () => {};
   pickFolder = async () => null;
 }

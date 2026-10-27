@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
-import { Cable, CircleAlert, Download, ExternalLink, Smartphone, Usb } from "lucide-react";
+import { Cable, CircleAlert, Download, ExternalLink, FolderOpen, Smartphone, Usb } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { UsbDevice } from "../../backend/types";
 import { Button } from "../../components/ui/Button";
@@ -179,6 +179,11 @@ export function UsbPanel() {
                     {d.platform === "android" && d.status === "ready" && d.source === "wpd" && (
                       <Button size="sm" variant="subtle" icon={Download} loading={copying === d.id} onClick={() => void installApp(d.id)}>
                         {t(copied.includes(d.id) ? "usb.installAgain" : "usb.installApp")}
+                      </Button>
+                    )}
+                    {d.platform === "ios" && d.status !== "driver_missing" && (
+                      <Button size="sm" variant="subtle" icon={FolderOpen} onClick={() => void run((b) => b.showIphoneApp())}>
+                        {t("usb.iphoneAppFile")}
                       </Button>
                     )}
                     {d.status === "driver_missing" && (

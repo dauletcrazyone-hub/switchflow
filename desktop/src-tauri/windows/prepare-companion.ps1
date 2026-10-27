@@ -3,6 +3,9 @@
 # with the SwitchFlow release key is accepted — never the debug build (it has test-only hooks).
 # Build it first (docs/BUILD_ANDROID.md):  . $env:USERPROFILE\.switchflow\release-signing.ps1; ./gradlew assembleRelease
 $ErrorActionPreference = "Stop"
+# Started from PowerShell 7, Windows PowerShell inherits its module path and cannot load its own
+# Get-FileHash / Get-AuthenticodeSignature. Use this PowerShell's modules.
+$env:PSModulePath = "$PSHOME\Modules;" + [Environment]::GetEnvironmentVariable("PSModulePath", "Machine")
 $apk = Join-Path $PSScriptRoot "..\..\..\android\app\build\outputs\apk\release\app-release.apk"
 $out = Join-Path $PSScriptRoot "companion\SwitchFlow.apk"
 if (-not (Test-Path $apk)) {

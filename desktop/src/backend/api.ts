@@ -54,6 +54,8 @@ export interface Backend {
   installCableDriver(): Promise<void>;
   /** Copies the SwitchFlow Android app to the phone's Download folder over "File transfer". */
   installCompanion(device: string): Promise<void>;
+  /** Opens Explorer at the iPhone app file shipped with SwitchFlow (for Sideloadly / iLoader). */
+  showIphoneApp(): Promise<void>;
   resetIdentity(): Promise<void>;
   pickFolder(): Promise<string | null>;
 }

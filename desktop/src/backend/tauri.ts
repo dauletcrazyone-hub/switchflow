@@ -68,6 +68,7 @@ export class TauriBackend implements Backend {
   cableConnect = () => invoke<number>("cable_connect");
   installCableDriver = () => invoke<void>("install_cable_driver");
   installCompanion = (device: string) => invoke<void>("install_companion", { device });
+  showIphoneApp = () => invoke<void>("show_iphone_app");
   resetIdentity = () => invoke<void>("reset_identity");
 
   pickFolder = async () => {
