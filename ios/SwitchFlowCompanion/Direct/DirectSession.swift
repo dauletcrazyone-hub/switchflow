@@ -155,7 +155,8 @@ final class DirectSender {
         try await ch.send(DirectType.item, ItemStart(k: item.k))
         var hasher = SHA256()
         var size: Int64 = 0
-        var error: String?
+        // Not `error`: inside a bare `catch` that name is the caught error.
+        var failure: String?
         do {
             let (url, temporary) = try await source.file(for: item)
             defer { if temporary { try? FileManager.default.removeItem(at: url) } }
@@ -176,16 +177,16 @@ final class DirectSender {
                 listener?.bytes(Int64(chunk.count), item)
             }
         } catch let e as SourceFailure {
-            error = e.code
+            failure = e.code
         } catch let e as TransferError {
-            error = e.code
+            failure = e.code
         } catch let e as DirectError {
             throw e
         } catch {
             // Could not open the original (deleted, iCloud download failed).
-            error = "source_read_failed"
+            failure = "source_read_failed"
         }
-        try await ch.send(DirectType.end, ItemEnd(k: item.k, size: size, sha256: Hashing.hex(hasher.finalize()), error: error))
+        try await ch.send(DirectType.end, ItemEnd(k: item.k, size: size, sha256: Hashing.hex(hasher.finalize()), error: failure))
     }
 
     private func wait(for type: UInt8) async throws -> DirectRecord {
