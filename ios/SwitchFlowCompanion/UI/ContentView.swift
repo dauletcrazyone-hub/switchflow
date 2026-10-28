@@ -18,7 +18,10 @@ func localized(_ key: String) -> LocalizedStringKey { LocalizedStringKey(key) }
 
 struct ContentView: View {
     @EnvironmentObject var c: CompanionController
+    @EnvironmentObject var d: DirectController
     @State private var scanning = false
+    /// The PC screen is open (from the home screen's "Windows PC" card).
+    @State private var pcOpen = false
     @State private var confirmRemove = false
 
     var body: some View {
@@ -29,19 +32,36 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     header
-                    Group {
-                        switch c.phase {
-                        case .idle: welcome
-                        case .connecting: waiting(String(localized: "connecting \(c.desktopName ?? "PC")"), code: nil)
-                        case .awaitingApproval: waiting(String(localized: "waiting_approval"), code: c.verificationCode)
-                        case .connected, .reconnecting: connected
+                    if d.stage != .idle {
+                        DirectView(scan: { scanning = true })
+                            .transition(.opacity.combined(with: .move(edge: .trailing)))
+                    } else if pcOpen || c.phase != .idle {
+                        if c.phase == .idle {
+                            Button { pcOpen = false; c.message = nil } label: {
+                                Image(systemName: "chevron.left").font(.system(size: 17, weight: .semibold))
+                                    .frame(width: 42, height: 42).background(Color.sfSurface, in: Circle())
+                            }
+                            .buttonStyle(PressableStyle())
                         }
+                        Group {
+                            switch c.phase {
+                            case .idle: welcome
+                            case .connecting: waiting(String(localized: "connecting \(c.desktopName ?? "PC")"), code: nil)
+                            case .awaitingApproval: waiting(String(localized: "waiting_approval"), code: c.verificationCode)
+                            case .connected, .reconnecting: connected
+                            }
+                        }
+                        .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)), removal: .opacity))
+                    } else {
+                        HomeView(openPC: { pcOpen = true }, scan: { scanning = true })
+                            .transition(.opacity)
                     }
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)), removal: .opacity))
                     addedContactsCard
                 }
                 .padding(22)
                 .animation(.spring(response: 0.42, dampingFraction: 0.86), value: c.phase)
+                .animation(.spring(response: 0.42, dampingFraction: 0.86), value: d.stage)
+                .animation(.spring(response: 0.42, dampingFraction: 0.86), value: pcOpen)
             }
         }
         .foregroundStyle(.white)
@@ -50,15 +70,33 @@ struct ContentView: View {
             ZStack(alignment: .bottom) {
                 QRScannerView { code in
                     scanning = false
-                    c.onScanned(code)
+                    route(code)
                 }
                 .ignoresSafeArea()
-                Text("scan_prompt").font(.callout.weight(.medium)).padding(14)
+                Text("scan_prompt_any").font(.callout.weight(.medium)).padding(14)
                     .background(.ultraThinMaterial, in: Capsule()).padding(.bottom, 40)
             }
         }
         .sheet(isPresented: $c.askingDocuments, onDismiss: { c.documentsPicked([]) }) {
             DocumentPicker { urls in c.documentsPicked(urls) }
+        }
+        .background(EmptyView().sheet(isPresented: $d.askingDocuments, onDismiss: { d.documentsPicked([]) }) {
+            DocumentPicker { urls in d.documentsPicked(urls) }
+        })
+    }
+
+    /// One scanner for both kinds of code: another phone's, or the PC's.
+    private func route(_ code: String) {
+        if DirectQR.isDirect(code) {
+            d.connect(code)
+        } else if code.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("switchflow://pair") {
+            if d.stage != .idle { d.leave() }
+            pcOpen = true
+            c.onScanned(code)
+        } else if d.stage != .idle {
+            d.connect(code)
+        } else {
+            c.onScanned(code)
         }
     }
 
@@ -81,13 +119,9 @@ struct ContentView: View {
             PulsingPhone().frame(height: 170)
             Text("connect").font(.system(size: 28, weight: .semibold)).multilineTextAlignment(.center)
             Text("connect_hint").font(.body).foregroundStyle(Color.sfText2).multilineTextAlignment(.center)
-            Button {
+            PrimaryButton(title: "connect", icon: "qrcode.viewfinder") {
                 c.message = nil
                 scanning = true
-            } label: {
-                Text("connect").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 17)
-                    .background(Color.sfAccent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .foregroundStyle(.white)
             }
             if let m = c.message {
                 Text(localized("msg_" + m.rawValue)).font(.callout).padding(16).frame(maxWidth: .infinity, alignment: .leading)
@@ -134,7 +168,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("access_title").font(.headline)
                         Text(cats.map { NSLocalizedString("cat_\($0)", comment: "") }.joined(separator: ", ")).font(.callout)
-                        Button("allow") { c.allowAccessTapped() }.buttonStyle(.borderedProminent).tint(.sfAccent)
+                        PrimaryButton(title: "allow") { c.allowAccessTapped() }
                     }
                 }
             }
@@ -155,7 +189,7 @@ struct ContentView: View {
                 }
             }
             Text("originals_safe").font(.caption).foregroundStyle(Color.sfText2)
-            Button(role: .destructive) { c.disconnect() } label: { Text("disconnect") }
+            SecondaryButton(title: "disconnect", color: .sfDanger) { c.disconnect() }
                 .padding(.top, 6)
         }
     }

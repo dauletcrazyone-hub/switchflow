@@ -238,6 +238,41 @@ class MediaStoreRepo(private val context: Context) {
         return resolver.query(writeCollection(category), arrayOf(MediaStore.MediaColumns._ID), sel, args, null)?.use { it.count > 0 } ?: false
     }
 
+    /**
+     * Everything SwitchFlow already saved in [category], as `folder|name|size` keys (see [targetKey]):
+     * one query instead of one per file when thousands of photos arrive.
+     */
+    fun ownFiles(category: String): Set<String> {
+        val out = HashSet<String>()
+        if (legacy) {
+            @Suppress("DEPRECATION")
+            val root = Environment.getExternalStorageDirectory().absolutePath.trimEnd('/') + "/"
+            @Suppress("DEPRECATION")
+            val cols = arrayOf(MediaStore.MediaColumns.DATA, MediaStore.MediaColumns.SIZE)
+            @Suppress("DEPRECATION")
+            val sel = "${MediaStore.MediaColumns.DATA} LIKE ?"
+            resolver.query(writeCollection(category), cols, sel, arrayOf("%/SwitchFlow/%"), null)?.use { c ->
+                while (c.moveToNext()) {
+                    val path = c.getString(0) ?: continue
+                    val file = File(path)
+                    val folder = file.parent?.removePrefix(root) ?: continue
+                    out += "$folder|${file.name}|${c.getLong(1)}"
+                }
+            }
+            return out
+        }
+        val cols = arrayOf(MediaStore.MediaColumns.RELATIVE_PATH, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE)
+        val sel = "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
+        resolver.query(writeCollection(category), cols, sel, arrayOf("%SwitchFlow/%"), null)?.use { c ->
+            while (c.moveToNext()) {
+                out += "${c.getString(0)?.trimEnd('/')}|${c.getString(1)}|${c.getLong(2)}"
+            }
+        }
+        return out
+    }
+
+    fun targetKey(category: String, name: String, size: Long, album: String?) = "${relativePath(category, album)}|$name|$size"
+
     companion object {
         fun guessMime(name: String): String {
             val ext = name.substringAfterLast('.', "").lowercase()

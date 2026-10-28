@@ -27,7 +27,7 @@ class TransferService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val n = notification(this, getString(R.string.notif_connected))
+        val n = notification(this, intent?.getStringExtra(EXTRA_TEXT) ?: getString(R.string.notif_connected))
         val started = runCatching {
             if (android.os.Build.VERSION.SDK_INT >= 29) {
                 startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
@@ -47,6 +47,7 @@ class TransferService : Service() {
         private const val CHANNEL = "transfer"
         private const val ID = 1
         private const val ATTENTION_ID = 2
+        private const val EXTRA_TEXT = "text"
 
         private fun ensureChannel(context: Context) {
             val nm = context.getSystemService(NotificationManager::class.java)
@@ -70,8 +71,10 @@ class TransferService : Service() {
                 .build()
         }
 
-        fun start(context: Context) {
-            runCatching { ContextCompat.startForegroundService(context, Intent(context, TransferService::class.java)) }
+        fun start(context: Context, text: String? = null) {
+            val i = Intent(context, TransferService::class.java)
+            if (text != null) i.putExtra(EXTRA_TEXT, text)
+            runCatching { ContextCompat.startForegroundService(context, i) }
         }
 
         fun stop(context: Context) {

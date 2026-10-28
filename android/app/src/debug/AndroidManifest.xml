@@ -11,6 +11,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="switchflow" android:host="pair" />
+                <data android:host="direct" />
             </intent-filter>
         </activity>
     </application>

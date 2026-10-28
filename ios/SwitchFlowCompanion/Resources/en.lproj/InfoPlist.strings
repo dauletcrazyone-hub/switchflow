@@ -1,6 +1,6 @@
 /* Texts of the iOS permission dialogs (Info.plist), in English. */
-"NSLocalNetworkUsageDescription" = "SwitchFlow connects to your Windows PC on the same Wi-Fi network to transfer your data. Nothing is sent to the internet.";
-"NSCameraUsageDescription" = "The camera scans the QR code shown by SwitchFlow on your PC.";
+"NSLocalNetworkUsageDescription" = "SwitchFlow connects to your other phone or your Windows PC on the same Wi-Fi network to transfer your data. Nothing is sent to the internet.";
+"NSCameraUsageDescription" = "The camera scans the QR code shown by SwitchFlow on your other phone or PC.";
 "NSPhotoLibraryUsageDescription" = "SwitchFlow reads the photos and videos you choose to transfer and saves the ones you receive. Originals are never changed.";
 "NSPhotoLibraryAddUsageDescription" = "SwitchFlow saves the photos and videos you receive from your other phone.";
 "NSContactsUsageDescription" = "SwitchFlow reads your contacts when you choose to transfer them, and adds contacts you receive.";

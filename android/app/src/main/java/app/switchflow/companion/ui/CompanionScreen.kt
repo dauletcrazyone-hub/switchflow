@@ -30,6 +30,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -69,6 +72,7 @@ fun CompanionScreen(
     onSkipDocuments: () -> Unit,
     onDisconnect: () -> Unit,
     onDismissMessage: () -> Unit,
+    onBack: (() -> Unit)? = null,
 ) {
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Column(
@@ -77,7 +81,14 @@ fun CompanionScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 22.dp, vertical = 16.dp),
         ) {
-            Header(state)
+            if (onBack != null) {
+                androidx.activity.compose.BackHandler(onBack = onBack)
+                Box(
+                    Modifier.padding(bottom = 14.dp).size(42.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surface).bouncyClick(onClick = onBack),
+                    contentAlignment = Alignment.Center,
+                ) { androidx.compose.material3.Icon(Icons.Rounded.ArrowBack, stringResource(R.string.back)) }
+            }
+            AppHeader()
             Spacer(Modifier.height(28.dp))
             AnimatedContent(
                 targetState = state.phase,
@@ -96,7 +107,7 @@ fun CompanionScreen(
 }
 
 @Composable
-private fun Header(state: UiState) {
+fun AppHeader() {
     Row(verticalAlignment = Alignment.CenterVertically) {
         LogoMark(36.dp)
         Spacer(Modifier.width(12.dp))
@@ -164,12 +175,7 @@ private fun Welcome(message: Message?, onScan: () -> Unit, onDismiss: () -> Unit
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(28.dp))
-        Button(
-            onClick = { onDismiss(); onScan() },
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            shape = RoundedCornerShape(18.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-        ) { Text(stringResource(R.string.connect), fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
+        PrimaryButton(stringResource(R.string.connect), icon = Icons.Rounded.QrCodeScanner) { onDismiss(); onScan() }
         AnimatedVisibility(message != null) {
             val text = when (message) {
                 Message.BadQr -> R.string.bad_qr
@@ -265,7 +271,7 @@ private fun Connected(
                     val cats = ask.categories.map { categoryLabel(it) }.joinToString(", ")
                     Text(stringResource(if (ask.write) R.string.access_body_write else R.string.access_body, cats), style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(14.dp))
-                    Button(onClick = { onAllow(ask) }, shape = RoundedCornerShape(14.dp)) { Text(stringResource(R.string.allow)) }
+                    PrimaryButton(stringResource(R.string.allow)) { onAllow(ask) }
                 }
             }
         }
@@ -278,7 +284,7 @@ private fun Connected(
                     Text(stringResource(R.string.pick_docs_body), style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(14.dp))
                     Row {
-                        Button(onClick = onPickDocuments, shape = RoundedCornerShape(14.dp)) { Text(stringResource(R.string.pick_docs)) }
+                        PrimaryButton(stringResource(R.string.pick_docs), Modifier.weight(1f), onClick = onPickDocuments)
                         Spacer(Modifier.width(8.dp))
                         TextButton(onClick = onSkipDocuments) { Text(stringResource(R.string.skip)) }
                     }
@@ -331,8 +337,6 @@ private fun Connected(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp),
         )
-        TextButton(onClick = onDisconnect, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-            Text(stringResource(R.string.disconnect), color = SF.Danger)
-        }
+        SecondaryButton(stringResource(R.string.disconnect), color = SF.Danger, onClick = onDisconnect)
     }
 }

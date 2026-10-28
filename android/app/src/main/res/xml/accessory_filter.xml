@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Sent by the SwitchFlow PC when it switches the phone into accessory mode (desktop cable.rs). -->
+<!-- SwitchFlow Cable: the PC switched the phone into accessory mode (desktop cable.rs).
+     SwitchFlow Direct: another phone did, over a Type-C cable (direct/UsbDirect.kt). -->
 <resources>
     <usb-accessory manufacturer="SwitchFlow" model="SwitchFlow Cable" />
+    <usb-accessory manufacturer="SwitchFlow" model="SwitchFlow Direct" />
 </resources>

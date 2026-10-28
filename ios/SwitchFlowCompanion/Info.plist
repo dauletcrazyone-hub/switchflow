@@ -59,9 +59,9 @@
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>SwitchFlow connects to your Windows PC on the same Wi-Fi network to transfer your data. Nothing is sent to the internet.</string>
+	<string>SwitchFlow connects to your other phone or your Windows PC on the same Wi-Fi network to transfer your data. Nothing is sent to the internet.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>The camera scans the QR code shown by SwitchFlow on your PC.</string>
+	<string>The camera scans the QR code shown by SwitchFlow on your other phone or PC.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>SwitchFlow reads the photos and videos you choose to transfer and saves the ones you receive. Originals are never changed.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

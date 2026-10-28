@@ -29,7 +29,22 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Phone to phone: received apps are installed with the user's confirmation (Android → Android). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Wi-Fi stays fast while a phone-to-phone transfer runs with the screen off. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- The app list for "Apps": only apps that appear on the home screen. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Two phones on a Type-C cable: this phone may be the USB host. -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <!-- Cable transfer without USB debugging: the PC switches the phone into accessory mode. -->
     <uses-feature android:name="android.hardware.usb.accessory" android:required="false" />
 
@@ -59,7 +74,18 @@
             <meta-data
                 android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED"
                 android:resource="@xml/accessory_filter" />
+            <!-- The other phone, after this one switched it into SwitchFlow accessory mode. -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter" />
         </activity>
+
+        <receiver
+            android:name=".data.InstallResultReceiver"
+            android:exported="false" />
 
         <!-- Portrait QR scanner from zxing-android-embedded -->
         <activity
