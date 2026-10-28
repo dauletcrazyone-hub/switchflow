@@ -42,26 +42,30 @@ class AndroidSink(
         val cats = offer.items.map { it.c }.distinct()
         askWrite(cats.filter { it != DirectCategory.APPS })
         val own = cats.filter { it in MEDIA }.associateWith { runCatching { media.ownFiles(it) }.getOrDefault(emptySet()) }
-        val skip = offer.items.filter { item ->
-            item.k in done || when {
-                item.c in MEDIA -> media.targetKey(item.c, item.n, item.s, item.a) in own[item.c].orEmpty()
-                item.c == DirectCategory.APPS -> appNotNeeded(item.app)
-                else -> false
+        val why = LinkedHashMap<String, String>()
+        for (item in offer.items) {
+            val reason = when {
+                item.k in done -> "done"
+                item.c in MEDIA && media.targetKey(item.c, item.n, item.s, item.a) in own[item.c].orEmpty() -> "exists"
+                item.c == DirectCategory.APPS -> appSkipReason(item.app)
+                else -> null
             }
-        }.map { it.k }
-        val skipSet = skip.toSet()
-        val need = offer.items.filter { it.k !in skipSet }.sumOf { it.s }
+            if (reason != null) why[item.k] = reason
+        }
+        val skip = why.keys.toList()
+        val need = offer.items.filter { it.k !in why }.sumOf { it.s }
         val (free, _) = DeviceEnv.storage()
         // Keep some room: a phone with a completely full disk misbehaves.
-        if (need > 0 && free - need < 200L * 1024 * 1024) return Accept(false, skip, free, "insufficient_storage")
-        return Accept(true, skip, free)
+        if (need > 0 && free - need < 200L * 1024 * 1024) return Accept(false, skip, free, "insufficient_storage", why)
+        return Accept(true, skip, free, why = why)
     }
 
-    private fun appNotNeeded(app: AppMeta?): Boolean {
-        if (app == null) return true
-        if (app.minSdk > Build.VERSION.SDK_INT) return true
-        val installed = apps.installedVersion(app.pkg) ?: return false
-        return installed >= app.versionCode
+    /** Null when the app should come; otherwise why not (shown to the user on both phones). */
+    private fun appSkipReason(app: AppMeta?): String? {
+        if (app == null) return "invalid"
+        if (app.minSdk > Build.VERSION.SDK_INT) return "old_android"
+        val installed = apps.installedVersion(app.pkg) ?: return null
+        return if (installed >= app.versionCode) "installed" else null
     }
 
     override fun begin(item: OfferItem): ItemWriter = when (item.c) {

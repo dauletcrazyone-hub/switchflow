@@ -71,18 +71,19 @@ class DirectTest {
 
     /** A loopback TCP connection with both handshakes done. */
     private fun connect(serverKey: ByteArray? = null, clientKey: ByteArray = serverKey ?: ByteArray(32) { 7 }, cable: Boolean = false): Pair {
-        ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { ss ->
+        ServerSocket().apply { receiveBufferSize = 4 shl 20; bind(java.net.InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 1) }.use { ss ->
             val serverSide = CompletableFuture<DirectChannel>()
             thread {
                 try {
-                    val s = ss.accept()
+                    val s = ss.accept().apply { sendBufferSize = 4 shl 20 }
                     val k = DirectHandshake.server(s.getInputStream(), s.getOutputStream(), if (cable) null else serverKey ?: clientKey)
                     serverSide.complete(DirectChannel(s.getInputStream(), s.getOutputStream(), k, false) { s.close() })
                 } catch (e: Exception) {
                     serverSide.completeExceptionally(e)
                 }
             }
-            val c = Socket(InetAddress.getLoopbackAddress(), ss.localPort)
+            // Same socket buffers as the app (WifiTransport).
+            val c = Socket().apply { sendBufferSize = 4 shl 20; receiveBufferSize = 4 shl 20; connect(java.net.InetSocketAddress(InetAddress.getLoopbackAddress(), ss.localPort)) }
             val k = DirectHandshake.client(c.getInputStream(), c.getOutputStream(), clientKey, if (cable) DirectHandshake.MODE_CABLE else DirectHandshake.MODE_QR)
             val client = DirectChannel(c.getInputStream(), c.getOutputStream(), k, true) { c.close() }
             return Pair(client, serverSide.get(5, TimeUnit.SECONDS))
@@ -104,7 +105,7 @@ class DirectTest {
         assertEquals("""{"a":1}""", r1.text())
         val r2 = p.server.receive()
         assertEquals(DirectType.DATA, r2.type)
-        assertArrayEquals(big, r2.body.copyOf(r2.length))
+        assertArrayEquals(big, r2.body.copyOfRange(r2.offset, r2.offset + r2.length))
         assertEquals("""{"b":2}""", p.client.receive().text())
         p.client.close(); p.server.close()
     }
@@ -190,10 +191,12 @@ class DirectTest {
 
     @Test(timeout = 30_000)
     fun usbWritesNeverEndOnAPacketBoundary() {
-        for (n in 1..40_000) {
-            val len = UsbDirect.chunkLength(n)
-            assertTrue(len in 1..16_000)
-            assertTrue("length $len for $n", len % 64 != 0)
+        for (max in listOf(UsbDirect.HOST_WRITE_MAX, UsbDirect.ACCESSORY_WRITE_MAX)) {
+            for (n in (1..70_000) + (max - 70..max + 70)) {
+                val len = UsbDirect.chunkLength(n, max)
+                assertTrue(len in 1..max)
+                assertTrue("length $len for $n", len % 64 != 0)
+            }
         }
     }
 
@@ -304,6 +307,43 @@ class DirectTest {
         for ((n, b) in files) assertArrayEquals(n, b, sink.saved.getValue(n))
         assertTrue("re-sent files that were already confirmed", sent <= 6 - 3)
         second.sender.channel.close()
+    }
+
+    /** Not a pass/fail check: prints how fast the protocol itself moves data (crypto, hashing, copies). */
+    @Test(timeout = 120_000)
+    fun throughputOverLoopback() {
+        val size = 256 * 1024 * 1024
+        val block = Random(9).nextBytes(4 * 1024 * 1024)
+        val items = (1..4).map { OfferItem("$it", "videos", "v$it.mp4", (size / 4).toLong()) }
+        val s = session()
+        val sink = object : DirectSink {
+            override fun plan(offer: Offer, done: Set<String>) = Accept(true, emptyList(), 1L shl 40)
+            override fun begin(item: OfferItem) = object : ItemWriter {
+                override fun write(b: ByteArray, off: Int, len: Int) {}
+                override fun commit(sha256: String) = ItemAck(item.k, "saved")
+                override fun abort() {}
+            }
+        }
+        runReceiver(s.receiver, sink, HashMap())
+        val source = DirectSource { _ ->
+            object : java.io.InputStream() {
+                var left = size / 4
+                override fun read(): Int = throw UnsupportedOperationException()
+                override fun read(b: ByteArray, off: Int, len: Int): Int {
+                    if (left == 0) return -1
+                    val n = minOf(len, left, block.size)
+                    System.arraycopy(block, 0, b, off, n)
+                    left -= n
+                    return n
+                }
+            }
+        }
+        val t0 = System.nanoTime()
+        val f = DirectSender(s.sender, Offer("speed", items), source, object : TransferListener {}).run()
+        val sec = (System.nanoTime() - t0) / 1e9
+        assertEquals(4, f.saved)
+        println("DIRECT_THROUGHPUT ${"%.0f".format(size / 1048576.0 / sec)} MB/s")
+        s.sender.channel.close()
     }
 
     companion object {

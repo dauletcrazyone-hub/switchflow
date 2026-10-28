@@ -82,6 +82,8 @@ struct Accept: Codable {
     var skip: [String]?
     var freeBytes: Int64?
     var error: String?
+    /// Why a key is skipped: "exists", "installed", "old_android" (sent by Android receivers).
+    var why: [String: String]?
 }
 
 struct ItemStart: Codable { var k: String }

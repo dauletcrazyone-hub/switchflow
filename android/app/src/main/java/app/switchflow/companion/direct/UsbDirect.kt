@@ -27,9 +27,16 @@ object UsbDirect {
     /** Accessory (and accessory + ADB / audio) product ids of AOA 1.0 and 2.0. */
     private val ACCESSORY_PIDS = 0x2d00..0x2d05
 
-    /** Largest single USB transfer; also what Android reads from an accessory in one go. */
-    private const val TRANSFER = 16_384
-    private const val WRITE_MAX = 16_000
+    /** What Android hands out per read on the accessory side (f_accessory's buffer); never smaller. */
+    private const val ACCESSORY_READ = 16_384
+    /**
+     * Big transfers on the host side and big writes on the accessory side: a USB 2.0 link spends most
+     * of its time between transfers when they are 16 KiB each. Android 9+ has no 16 KiB bulk limit,
+     * and the accessory driver splits large writes itself. A multiple of 512, so no packet is cut.
+     */
+    private const val HOST_READ = 256 * 1024
+    const val HOST_WRITE_MAX = 256 * 1024
+    const val ACCESSORY_WRITE_MAX = 128 * 1024
 
     fun isOurAccessory(a: UsbAccessory) = a.manufacturer == MANUFACTURER && a.model == MODEL
 
@@ -48,8 +55,8 @@ object UsbDirect {
     }
 
     /** A write that is a multiple of the packet size leaves the reader waiting; 64 divides them all. */
-    internal fun chunkLength(remaining: Int): Int {
-        var n = minOf(remaining, WRITE_MAX)
+    internal fun chunkLength(remaining: Int, max: Int): Int {
+        var n = minOf(remaining, max)
         if (n % 64 == 0) n -= 1
         return n
     }
@@ -155,7 +162,7 @@ object UsbDirect {
     }
 
     private class HostInput(private val c: UsbDeviceConnection, private val ep: UsbEndpoint, private val closed: AtomicBoolean) : InputStream() {
-        private val buf = ByteArray(TRANSFER)
+        private val buf = ByteArray(HOST_READ)
         private var pos = 0
         private var end = 0
 
@@ -169,7 +176,7 @@ object UsbDirect {
             while (pos >= end) {
                 if (closed.get()) throw IOException("usb: closed")
                 // bulkTransfer returns -1 both on timeout and on error; a detach closes the link.
-                val n = c.bulkTransfer(ep, buf, TRANSFER, 1000)
+                val n = c.bulkTransfer(ep, buf, HOST_READ, 1000)
                 if (n > 0) { pos = 0; end = n }
             }
             val n = minOf(len, end - pos)
@@ -188,7 +195,7 @@ object UsbDirect {
             var failures = 0
             while (p < stop) {
                 if (closed.get()) throw IOException("usb: closed")
-                val n = c.bulkTransfer(ep, b, p, chunkLength(stop - p), 5000)
+                val n = c.bulkTransfer(ep, b, p, chunkLength(stop - p, HOST_WRITE_MAX), 5000)
                 if (n > 0) {
                     p += n
                     failures = 0
@@ -201,7 +208,7 @@ object UsbDirect {
 
     /** Android hands an accessory's data out per USB transfer; a smaller read buffer loses the rest. */
     private class AccessoryInput(private val inner: FileInputStream) : InputStream() {
-        private val buf = ByteArray(TRANSFER)
+        private val buf = ByteArray(ACCESSORY_READ)
         private var pos = 0
         private var end = 0
 
@@ -213,7 +220,7 @@ object UsbDirect {
         override fun read(b: ByteArray, off: Int, len: Int): Int {
             if (len == 0) return 0
             while (pos >= end) {
-                val n = inner.read(buf, 0, TRANSFER)
+                val n = inner.read(buf, 0, ACCESSORY_READ)
                 if (n < 0) return -1
                 pos = 0; end = n
             }
@@ -231,7 +238,7 @@ object UsbDirect {
             var p = off
             val stop = off + len
             while (p < stop) {
-                val n = chunkLength(stop - p)
+                val n = chunkLength(stop - p, ACCESSORY_WRITE_MAX)
                 inner.write(b, p, n)
                 p += n
             }

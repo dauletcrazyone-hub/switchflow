@@ -157,4 +157,8 @@
     <string name="later">Later</string>
     <string name="allow_all_card">Allow access to everything</string>
     <string name="allow_all_card_hint">One tap instead of separate requests during a transfer</string>
+    <string name="not_sent_title">Not sent</string>
+    <string name="not_sent_installed">Already installed on the receiving phone (same or newer version).</string>
+    <string name="not_sent_old_android">Needs a newer Android than the receiving phone has.</string>
+    <string name="not_sent_invalid">The app files could not be read.</string>
 </resources>

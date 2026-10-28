@@ -156,4 +156,8 @@
     <string name="later">Позже</string>
     <string name="allow_all_card">Разрешить доступ ко всему</string>
     <string name="allow_all_card_hint">Одно нажатие вместо отдельных запросов во время переноса</string>
+    <string name="not_sent_title">Не отправлено</string>
+    <string name="not_sent_installed">Уже установлено на телефоне-получателе (та же или более новая версия).</string>
+    <string name="not_sent_old_android">Нужна более новая версия Android, чем на телефоне-получателе.</string>
+    <string name="not_sent_invalid">Не удалось прочитать файлы приложения.</string>
 </resources>

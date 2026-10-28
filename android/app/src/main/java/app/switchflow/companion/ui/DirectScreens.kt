@@ -672,6 +672,33 @@ private fun Finished(state: DirectUi, a: DirectActions) {
                 Stat(r.failed.toString(), stringResource(R.string.stat_failed), if (r.failed > 0) SF.Danger else MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        if (state.notSent.isNotEmpty()) {
+            Spacer(Modifier.height(18.dp))
+            SfCard(tint = SF.Warning.copy(alpha = 0.12f)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.not_sent_title), style = MaterialTheme.typography.titleMedium)
+                    for (n in state.notSent) {
+                        Row(verticalAlignment = Alignment.Top) {
+                            Icon(categoryIcon(DirectCategory.APPS), null, tint = categoryColor(DirectCategory.APPS), modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text(n.label, style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    stringResource(
+                                        when (n.reason) {
+                                            "installed" -> R.string.not_sent_installed
+                                            "old_android" -> R.string.not_sent_old_android
+                                            else -> R.string.not_sent_invalid
+                                        },
+                                    ),
+                                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if (state.role == DirectIntent.RECEIVE && state.inbox.isNotEmpty()) {
             Spacer(Modifier.height(18.dp))
             InboxCard(state, a)

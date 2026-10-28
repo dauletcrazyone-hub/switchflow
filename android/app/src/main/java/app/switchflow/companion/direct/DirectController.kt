@@ -83,6 +83,9 @@ data class DirectProgress(
 
 data class InstallRow(val app: InboxApp, val state: String = "ready", val error: String? = null)
 
+/** An app that was offered but not sent, and why ("installed", "old_android", "invalid"). */
+data class NotSent(val label: String, val reason: String)
+
 data class DirectUi(
     val stage: DirectStage = DirectStage.Idle,
     /** "send" or "receive" once known. */
@@ -110,6 +113,8 @@ data class DirectUi(
     /** Hand-picked items per category (source ids); a category missing here sends everything. */
     val picked: Map<String, Set<String>> = emptyMap(),
     val pickedBytes: Map<String, Long> = emptyMap(),
+    /** Apps the receiver did not need or cannot run; shown on the finish screen of both phones. */
+    val notSent: List<NotSent> = emptyList(),
 ) {
     fun chosenCount(row: CategoryRow): Long = picked[row.category]?.size?.toLong() ?: row.count
     fun chosenBytes(row: CategoryRow): Long = pickedBytes[row.category] ?: row.bytes
@@ -228,17 +233,25 @@ class DirectController(private val app: Context) {
         listener = null
         wakeLocks.release()
         TransferService.stop(app)
+        val received = inbox.list()
         _state.update {
             it.copy(
                 stage = DirectStage.Finished, result = f, qr = null,
                 progress = it.progress.copy(current = null),
-                inbox = inbox.list().map { a -> InstallRow(a) }, canInstall = inbox.canInstall(),
+                inbox = received.map { a -> InstallRow(a) }, canInstall = inbox.canInstall(),
             )
+        }
+        // Apps arrived: start installing right away (Android asks to confirm each one).
+        if (received.isNotEmpty()) {
+            if (inbox.canInstall()) installAll() else autoInstall = true
         }
     }
 
+    /** Waiting for "Install unknown apps" to be allowed in Settings; install as soon as it is. */
+    @Volatile private var autoInstall = false
+
     private val receiveListener = object : TransferListener {
-        override fun onPlanned(all: List<OfferItem>, skip: Set<String>) = planned(all, skip)
+        override fun onPlanned(all: List<OfferItem>, skip: Set<String>, why: Map<String, String>) = planned(all, skip, why)
         override fun onBytes(n: Long, item: OfferItem) = bytes(n, item)
         override fun onItemDone(item: OfferItem, ack: ItemAck) = itemDone(item, ack)
     }
@@ -485,7 +498,7 @@ class DirectController(private val app: Context) {
     }
 
     private val sendListener = object : TransferListener {
-        override fun onPlanned(all: List<OfferItem>, skip: Set<String>) = planned(all, skip)
+        override fun onPlanned(all: List<OfferItem>, skip: Set<String>, why: Map<String, String>) = planned(all, skip, why)
         override fun onBytes(n: Long, item: OfferItem) = bytes(n, item)
         override fun onItemDone(item: OfferItem, ack: ItemAck) = itemDone(item, ack)
     }
@@ -518,10 +531,15 @@ class DirectController(private val app: Context) {
         _state.update { it.copy(stage = DirectStage.Transferring, role = role, progress = DirectProgress(), result = null, error = null) }
     }
 
-    private fun planned(all: List<OfferItem>, skip: Set<String>) {
+    private fun planned(all: List<OfferItem>, skip: Set<String>, why: Map<String, String>) {
         if (_state.value.role == DirectIntent.RECEIVE && _state.value.stage != DirectStage.Transferring) startTransferUi(DirectIntent.RECEIVE)
         sizes = all.associate { it.k to it.s }
         doneKeys.addAll(skip)
+        // One line per app (an app is several installer files), with the receiver's reason.
+        val notSent = all.filter { it.k in skip && it.app != null && why[it.k] != null && why[it.k] != "done" }
+            .distinctBy { it.app!!.pkg }
+            .map { NotSent(it.app!!.label, why.getValue(it.k)) }
+        _state.update { it.copy(notSent = notSent) }
         publish(null, null)
     }
 
@@ -737,7 +755,13 @@ class DirectController(private val app: Context) {
 
     // ------------------------------------------------------------- apps inbox
 
-    fun refreshInbox() = _state.update { it.copy(inbox = mergeInbox(it.inbox), canInstall = inbox.canInstall()) }
+    fun refreshInbox() {
+        _state.update { it.copy(inbox = mergeInbox(it.inbox), canInstall = inbox.canInstall()) }
+        if (autoInstall && inbox.canInstall()) {
+            autoInstall = false
+            installAll()
+        }
+    }
 
     private fun mergeInbox(old: List<InstallRow>): List<InstallRow> {
         val prev = old.associateBy { it.app.pkg }
@@ -848,7 +872,7 @@ class DirectController(private val app: Context) {
         _state.update {
             it.copy(
                 stage = DirectStage.Idle, role = null, qr = null, peer = null, error = null, result = null, permissionAsk = null, usbWaiting = false,
-                picking = null, picked = emptyMap(), pickedBytes = emptyMap(),
+                picking = null, picked = emptyMap(), pickedBytes = emptyMap(), notSent = emptyList(),
             )
         }
     }

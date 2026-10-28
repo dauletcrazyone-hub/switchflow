@@ -59,6 +59,7 @@ class DirectLink(val channel: DirectChannel, val isClient: Boolean, val viaCable
 /** Wi-Fi side: the receiver listens, the sender connects. */
 object WifiTransport {
     const val PORT = 47830
+    private const val SOCKET_BUFFER = 4 * 1024 * 1024
 
     /**
      * This phone's IPv4 addresses, Wi-Fi first, then a hotspot this phone runs, then the rest.
@@ -84,9 +85,9 @@ object WifiTransport {
     /** Listens until [stop]; every accepted socket that passes the handshake goes to [onLink]. */
     class Listener(private val key: ByteArray, private val onLink: (DirectLink) -> Unit) {
         private val server: ServerSocket = try {
-            ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(PORT), 4) }
+            ServerSocket().apply { reuseAddress = true; receiveBufferSize = SOCKET_BUFFER; bind(InetSocketAddress(PORT), 4) }
         } catch (e: IOException) {
-            ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(0), 4) }
+            ServerSocket().apply { reuseAddress = true; receiveBufferSize = SOCKET_BUFFER; bind(InetSocketAddress(0), 4) }
         }
         val port get() = server.localPort
         @Volatile private var stopped = false
@@ -103,6 +104,7 @@ object WifiTransport {
         private fun handshake(s: Socket) {
             try {
                 s.tcpNoDelay = true
+                s.sendBufferSize = SOCKET_BUFFER
                 s.soTimeout = 10_000 // a stranger that connects and says nothing
                 val sessionKey = DirectHandshake.server(s.getInputStream(), s.getOutputStream(), key)
                 s.soTimeout = 0 // silence is detected by the channel's keep-alive from here on
@@ -126,6 +128,9 @@ object WifiTransport {
                 val s = Socket()
                 try {
                     s.tcpNoDelay = true
+                    // Large socket buffers keep Wi-Fi busy while either phone pauses to save a file.
+                    s.sendBufferSize = SOCKET_BUFFER
+                    s.receiveBufferSize = SOCKET_BUFFER
                     s.connect(InetSocketAddress(InetAddress.getByName(host), t.port), timeoutMs)
                     s.soTimeout = 10_000
                     val sessionKey = DirectHandshake.client(s.getInputStream(), s.getOutputStream(), t.key, DirectHandshake.MODE_QR)
