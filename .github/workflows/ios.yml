@@ -177,7 +177,7 @@ jobs:
           set -o pipefail
           # The app (Debug) plus the UI-test driver that plays the person holding the phone.
           xcodebuild build-for-testing -project SwitchFlowCompanion.xcodeproj -scheme SwitchFlowE2E \
-            -destination "id=$UDID" -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO 2>&1 | tail -3
+            -destination "id=$UDID" -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO 2>&1 | tee build-e2e.log | tail -3             || { grep -E "error:" build-e2e.log | sort -u | head -80; exit 1; }
 
       - name: Prepare the simulator (photos, permissions)
         run: |
