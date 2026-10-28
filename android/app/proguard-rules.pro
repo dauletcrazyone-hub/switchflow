@@ -5,6 +5,12 @@
 -keepclassmembers class app.switchflow.companion.net.** {
     *** Companion;
 }
+# Phone-to-phone messages (docs/DIRECT.md) and the received-apps list.
+-keep,includedescriptorclasses class app.switchflow.companion.direct.**$$serializer { *; }
+-keep,includedescriptorclasses class app.switchflow.companion.data.**$$serializer { *; }
+-keepclassmembers class app.switchflow.companion.direct.** {
+    *** Companion;
+}
 # OkHttp optional platform classes
 -dontwarn org.bouncycastle.**
 -dontwarn org.conscrypt.**
