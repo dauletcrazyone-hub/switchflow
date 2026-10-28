@@ -178,7 +178,8 @@ async fn scenario(core: Arc<Core>, out: PathBuf) -> R<serde_json::Value> {
             }
         });
     }
-    let req = wait_for("the iPhone app to request pairing", 300, || core.snapshot().pair_requests.first().cloned()).await?;
+    // Generous: on a busy cloud Mac the simulator has taken 6 minutes to launch the app.
+    let req = wait_for("the iPhone app to request pairing", 900, || core.snapshot().pair_requests.first().cloned()).await?;
     log(format!(
         "pairing request: model={} code={} name={} os={} via_usb={}",
         req.device.model, req.code, req.device.name, req.device.os_version, req.via_usb
