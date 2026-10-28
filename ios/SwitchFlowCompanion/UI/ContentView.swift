@@ -22,6 +22,8 @@ struct ContentView: View {
     @State private var scanning = false
     /// The PC screen is open (from the home screen's "Windows PC" card).
     @State private var pcOpen = false
+    /// First start: the "allow everything" screen until it is answered once.
+    @State private var allowAll = !UserDefaults.standard.bool(forKey: "all_asked") && AllowAllView.needed
     @State private var confirmRemove = false
 
     var body: some View {
@@ -32,7 +34,12 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     header
-                    if d.stage != .idle {
+                    if allowAll {
+                        AllowAllView {
+                            UserDefaults.standard.set(true, forKey: "all_asked")
+                            allowAll = false
+                        }
+                    } else if d.stage != .idle {
                         DirectView(scan: { scanning = true })
                             .transition(.opacity.combined(with: .move(edge: .trailing)))
                     } else if pcOpen || c.phase != .idle {
@@ -83,6 +90,17 @@ struct ContentView: View {
         .background(EmptyView().sheet(isPresented: $d.askingDocuments, onDismiss: { d.documentsPicked([]) }) {
             DocumentPicker { urls in d.documentsPicked(urls) }
         })
+        .fullScreenCover(isPresented: Binding(get: { d.picking != nil }, set: { if !$0 { d.picking = nil } })) {
+            if let c = d.picking {
+                ZStack {
+                    Color.sfBg.ignoresSafeArea()
+                    MediaPickerView(category: c, items: d.media(c), albums: d.albums(c), initial: d.picked[c],
+                                    onDone: { d.setPicked(c, $0) }, onBack: { d.picking = nil })
+                }
+                .foregroundStyle(.white)
+                .preferredColorScheme(.dark)
+            }
+        }
     }
 
     /// One scanner for both kinds of code: another phone's, or the PC's.

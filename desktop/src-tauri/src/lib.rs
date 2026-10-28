@@ -1,5 +1,6 @@
 //! SwitchFlow desktop backend.
 
+pub mod apk_server;
 pub mod backup;
 pub mod cable;
 pub mod checksum;
@@ -97,6 +98,11 @@ pub fn run() {
             tauri::async_runtime::spawn(server::serve(core.clone(), identity));
             spawn_background(core.clone());
             let cable = cable::Cable::new();
+            if let Ok(apk) = app.path().resolve("companion/SwitchFlow.apk", tauri::path::BaseDirectory::Resource) {
+                if let Some(port) = apk_server::start(apk) {
+                    cable.set_apk_port(port);
+                }
+            }
             discovery::spawn(core.clone(), cable.clone());
             app.manage(cable);
             spawn_ui_bridge(app.handle().clone(), core.clone());
@@ -133,6 +139,7 @@ pub fn run() {
             commands::cable_connect,
             commands::install_cable_driver,
             commands::install_companion,
+            commands::adb_install,
             commands::show_iphone_app,
             commands::reset_identity,
         ])

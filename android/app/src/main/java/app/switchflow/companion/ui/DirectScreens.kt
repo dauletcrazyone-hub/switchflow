@@ -130,6 +130,8 @@ class DirectActions(
     val allowInstalls: () -> Unit,
     val appIcon: (String) -> Bitmap?,
     val inboxIcon: (String) -> Bitmap?,
+    /** Opens the photo/video grid for a category. */
+    val pickMedia: (String) -> Unit,
 )
 
 // ------------------------------------------------------------------- home
@@ -454,9 +456,11 @@ private fun Choose(state: DirectUi, a: DirectActions) {
                 isDocs && row.count == 0L -> stringResource(R.string.docs_hint)
                 row.count == 0L -> stringResource(R.string.empty)
                 row.category == Category.CONTACTS || row.category == Category.CALENDARS -> row.count.toString()
+                row.category in state.picked -> stringResource(R.string.picked_of, state.chosenCount(row).toInt(), row.count.toInt()) + " · " + bytes(state.chosenBytes(row))
                 else -> "${row.count} · ${bytes(row.bytes)}"
             }
-            CategoryItem(row.category, subtitle, row.selected, enabled || isDocs) {
+            val pickable = enabled && (row.category == Category.PHOTOS || row.category == Category.VIDEOS)
+            CategoryItem(row.category, subtitle, row.selected, enabled || isDocs, onPick = if (pickable) ({ a.pickMedia(row.category) }) else null) {
                 if (isDocs) a.pickDocuments() else a.toggleCategory(row.category)
             }
         }
@@ -484,7 +488,15 @@ private fun Choose(state: DirectUi, a: DirectActions) {
 }
 
 @Composable
-private fun CategoryItem(category: String, subtitle: String, selected: Boolean, enabled: Boolean, chevron: Boolean = false, onClick: () -> Unit) {
+private fun CategoryItem(
+    category: String,
+    subtitle: String,
+    selected: Boolean,
+    enabled: Boolean,
+    chevron: Boolean = false,
+    onPick: (() -> Unit)? = null,
+    onClick: () -> Unit,
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -499,6 +511,12 @@ private fun CategoryItem(category: String, subtitle: String, selected: Boolean, 
         Column(Modifier.weight(1f)) {
             Text(categoryName(category), style = MaterialTheme.typography.titleMedium)
             Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (onPick != null) {
+            Box(
+                Modifier.padding(end = 10.dp).clip(CircleShape).background(categoryColor(category).copy(alpha = 0.16f))
+                    .bouncyClick(onClick = onPick).padding(horizontal = 12.dp, vertical = 7.dp),
+            ) { Text(stringResource(R.string.pick_items), color = categoryColor(category), style = MaterialTheme.typography.labelMedium) }
         }
         if (chevron) {
             if (selected) CheckDot(true) else Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)

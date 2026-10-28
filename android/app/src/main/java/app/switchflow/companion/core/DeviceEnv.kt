@@ -32,6 +32,11 @@ class Store(context: Context) {
         get() = prefs.getLong("last_seq", 0)
         set(v) = prefs.edit().putLong("last_seq", v).apply()
 
+    /** The "allow everything" screen was answered once (yes or later); it is not shown again by itself. */
+    var allAsked: Boolean
+        get() = prefs.getBoolean("all_asked", false)
+        set(v) = prefs.edit().putBoolean("all_asked", v).apply()
+
     /** Whether the notification permission was already asked for once. */
     var notificationsAsked: Boolean
         get() = prefs.getBoolean("notifications_asked", false)
@@ -123,6 +128,21 @@ object CategoryPermissions {
             listOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE)
         } else emptyList()
     }
+
+    /**
+     * Everything the app may ever need, asked in one go on first start, so neither the PC nor the
+     * other phone triggers separate prompts later. Android still shows one system dialog per group.
+     */
+    fun all(): List<String> = buildList {
+        for (c in listOf(Category.PHOTOS, Category.VIDEOS, Category.MUSIC, Category.CONTACTS, Category.CALENDARS)) {
+            addAll(requestSet(c))
+            addAll(forWriting(c))
+        }
+        add(Manifest.permission.CAMERA)
+        if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+    }.distinct()
+
+    fun missing(context: Context): List<String> = all().filter { !granted(context, listOf(it)) }
 
     fun granted(context: Context, perms: List<String>) =
         perms.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }

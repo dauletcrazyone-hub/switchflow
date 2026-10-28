@@ -92,6 +92,9 @@ class SourceCatalog(private val context: Context) {
         return CategoryInventory(Category.DOCUMENTS, Permission.GRANTED, items.size.toLong(), items.sumOf { it.size }, items = items, note = note)
     }
 
+    /** The MediaStore address of a listed photo, video or song (for thumbnails). */
+    fun uri(sourceId: String): Uri? = uris[sourceId]
+
     /** Opens the original for reading. Never opens anything for writing. */
     fun open(sourceId: String): InputStream {
         files[sourceId]?.let { return it.inputStream() }

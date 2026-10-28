@@ -105,9 +105,16 @@ data class DirectUi(
     val permissionAsk: PermissionAsk? = null,
     /** Host side: a phone is on the cable and Android asked the user to allow access to it. */
     val usbWaiting: Boolean = false,
+    /** The photo/video grid is open for this category. */
+    val picking: String? = null,
+    /** Hand-picked items per category (source ids); a category missing here sends everything. */
+    val picked: Map<String, Set<String>> = emptyMap(),
+    val pickedBytes: Map<String, Long> = emptyMap(),
 ) {
-    val selectedBytes: Long get() = categories.filter { it.selected }.sumOf { it.bytes } + (apps.orEmpty().filter { it.pkg in selectedApps }.sumOf { it.size })
-    val selectedCount: Long get() = categories.filter { it.selected }.sumOf { it.count } + selectedApps.size
+    fun chosenCount(row: CategoryRow): Long = picked[row.category]?.size?.toLong() ?: row.count
+    fun chosenBytes(row: CategoryRow): Long = pickedBytes[row.category] ?: row.bytes
+    val selectedBytes: Long get() = categories.filter { it.selected }.sumOf { chosenBytes(it) } + (apps.orEmpty().filter { it.pkg in selectedApps }.sumOf { it.size })
+    val selectedCount: Long get() = categories.filter { it.selected }.sumOf { chosenCount(it) } + selectedApps.size
 }
 
 /**
@@ -314,6 +321,56 @@ class DirectController(private val app: Context) {
         }
     }
 
+    // ------------------------------------------------------- photo/video grid
+
+    /** Everything listed in [category] and its albums, for the grid. */
+    fun media(category: String): Pair<List<app.switchflow.companion.net.SourceItem>, List<app.switchflow.companion.net.Album>> {
+        val inv = inventories[category] ?: return emptyList<app.switchflow.companion.net.SourceItem>() to emptyList()
+        return inv.items to inv.albums
+    }
+
+    fun openPicker(category: String) = _state.update { it.copy(picking = category) }
+
+    /** Grid closed with this choice; choosing everything is the same as no choice. */
+    fun setPicked(category: String, ids: Set<String>) {
+        val items = inventories[category]?.items.orEmpty()
+        val all = ids.size == items.size
+        val bytes = items.filter { it.id in ids }.sumOf { it.size }
+        _state.update { s ->
+            s.copy(
+                picking = null,
+                picked = if (all) s.picked - category else s.picked + (category to ids),
+                pickedBytes = if (all) s.pickedBytes - category else s.pickedBytes + (category to bytes),
+                categories = s.categories.map { if (it.category == category) it.copy(selected = ids.isNotEmpty()) else it },
+            )
+        }
+    }
+
+    fun closePicker() = _state.update { it.copy(picking = null) }
+
+    private val thumbs = android.util.LruCache<String, android.graphics.Bitmap>(400)
+
+    /** A small preview of a photo or video, cached; null when the phone cannot make one. */
+    fun thumbnail(id: String, sizePx: Int): android.graphics.Bitmap? {
+        thumbs.get(id)?.let { return it }
+        val uri = catalog.uri(id) ?: return null
+        val bmp = runCatching {
+            if (Build.VERSION.SDK_INT >= 29) {
+                app.contentResolver.loadThumbnail(uri, android.util.Size(sizePx, sizePx), null)
+            } else {
+                val rowId = android.content.ContentUris.parseId(uri)
+                @Suppress("DEPRECATION")
+                if (id.startsWith(Category.VIDEOS)) {
+                    android.provider.MediaStore.Video.Thumbnails.getThumbnail(app.contentResolver, rowId, android.provider.MediaStore.Video.Thumbnails.MINI_KIND, null)
+                } else {
+                    android.provider.MediaStore.Images.Thumbnails.getThumbnail(app.contentResolver, rowId, android.provider.MediaStore.Images.Thumbnails.MINI_KIND, null)
+                }
+            }
+        }.getOrNull() ?: return null
+        thumbs.put(id, bmp)
+        return bmp
+    }
+
     fun toggleCategory(c: String) = _state.update { s ->
         s.copy(categories = s.categories.map { if (it.category == c && it.count > 0) it.copy(selected = !it.selected) else it })
     }
@@ -346,7 +403,9 @@ class DirectController(private val app: Context) {
         for (row in s.categories.filter { it.selected }) {
             val inv = inventories[row.category] ?: continue
             val albums = inv.albums.associate { it.id to it.name }
+            val only = s.picked[row.category]
             for (it in inv.items) {
+                if (only != null && it.id !in only) continue
                 val k = next()
                 items += OfferItem(k, it.category, it.name, it.size, it.mime.ifBlank { null }, it.createdMs, it.albumIds.firstOrNull()?.let(albums::get), it.itemCount)
                 val id = it.id
@@ -786,7 +845,12 @@ class DirectController(private val app: Context) {
         catalog.clearExports()
         wakeLocks.release()
         _state.value.permissionAsk?.done?.complete(Unit)
-        _state.update { it.copy(stage = DirectStage.Idle, role = null, qr = null, peer = null, error = null, result = null, permissionAsk = null, usbWaiting = false) }
+        _state.update {
+            it.copy(
+                stage = DirectStage.Idle, role = null, qr = null, peer = null, error = null, result = null, permissionAsk = null, usbWaiting = false,
+                picking = null, picked = emptyMap(), pickedBytes = emptyMap(),
+            )
+        }
     }
 
     private suspend fun <T> withIo(block: suspend () -> T): T = kotlinx.coroutines.withContext(Dispatchers.IO) { block() }

@@ -109,3 +109,15 @@
 "err_io_error" = "The receiving phone could not prepare the transfer. Please try again.";
 "err_refused" = "The receiving phone declined the transfer.";
 "err_generic" = "Something went wrong. Please try again.";
+"picked_done %lld" = "Done · %lld selected";
+"pick_items" = "Choose";
+"all_albums" = "All";
+"select_all" = "Select all";
+"clear_all" = "Clear all";
+"allow_all_title" = "Allow everything once";
+"allow_all_body" = "SwitchFlow asks for access to everything it can transfer now, so transfers later do not stop for separate requests.";
+"allow_all_media" = "Photos and videos";
+"allow_all_camera" = "Camera, for QR codes";
+"allow_all_privacy" = "Nothing leaves your phones; originals are never changed.";
+"allow_all" = "Allow everything";
+"later" = "Later";

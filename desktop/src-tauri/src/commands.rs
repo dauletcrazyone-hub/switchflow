@@ -283,6 +283,32 @@ pub async fn install_cable_driver(app: AppHandle) -> FResult<()> {
     }
 }
 
+/// Phones with USB debugging on: installs the app and grants all its permissions in one go.
+#[tauri::command]
+pub async fn adb_install(app: AppHandle, core: Core_<'_>, serial: String) -> FResult<()> {
+    use tauri::Manager;
+    let settings = core.settings();
+    if !settings.use_adb {
+        return Err(Fault::State("adb_disabled"));
+    }
+    let adb = crate::discovery::adb::find(settings.adb_path.as_deref()).ok_or(Fault::State("adb_not_found"))?;
+    let apk = app
+        .path()
+        .resolve("companion/SwitchFlow.apk", tauri::path::BaseDirectory::Resource)
+        .map_err(|_| Fault::State("companion_missing"))?;
+    if !apk.is_file() {
+        return Err(Fault::State("companion_missing"));
+    }
+    let ok = tauri::async_runtime::spawn_blocking(move || crate::discovery::adb::install(&adb, &serial, &apk))
+        .await
+        .map_err(|_| Fault::State("adb_install_failed"))?;
+    if ok {
+        Ok(())
+    } else {
+        Err(Fault::State("adb_install_failed"))
+    }
+}
+
 /// Routes the phone's 127.0.0.1 to this PC over USB via `adb reverse`.
 #[tauri::command]
 pub fn adb_reverse(core: Core_<'_>, serial: String) -> FResult<()> {

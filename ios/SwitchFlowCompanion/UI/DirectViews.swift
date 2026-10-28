@@ -309,11 +309,7 @@ struct DirectView: View {
             if d.scanning && d.categories.isEmpty {
                 ProgressView().tint(.sfAccent).frame(maxWidth: .infinity).padding(30)
             }
-            ForEach(d.categories) { row in
-                Button { d.toggle(row.category) } label: { categoryRow(row) }
-                    .buttonStyle(PressableStyle(scale: 0.97))
-                    .disabled(row.count == 0 && row.category != Category.documents)
-            }
+            ForEach(d.categories) { row in categoryRow(row) }
             if d.peer?.platform == "android" {
                 Text("apps_from_iphone").font(.caption).foregroundStyle(Color.sfText2).padding(.horizontal, 6)
             }
@@ -335,15 +331,36 @@ struct DirectView: View {
         else if row.category == Category.documents && row.count == 0 { subtitle = String(localized: "docs_hint") }
         else if row.count == 0 { subtitle = String(localized: "empty") }
         else if row.category == Category.contacts || row.category == Category.calendars { subtitle = "\(row.count)" }
+        else if d.picked[row.category] != nil { subtitle = "\(d.chosenCount(row)) / \(row.count) · \(byteString(d.chosenBytes(row)))" }
         else { subtitle = "\(row.count) · \(byteString(row.bytes))" }
-        return HStack(spacing: 14) {
-            IconBadge(icon: categoryIcon(row.category), color: categoryColor(row.category))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(localized("cat_" + row.category)).font(.headline)
-                Text(subtitle).font(.callout).foregroundStyle(Color.sfText2)
+        let pickable = row.count > 0 && (row.category == Category.photos || row.category == Category.videos)
+        let enabled = row.count > 0 || row.category == Category.documents
+        // Separate buttons side by side (a button inside another button's label would steal its taps).
+        return HStack(spacing: 10) {
+            Button { d.toggle(row.category) } label: {
+                HStack(spacing: 14) {
+                    IconBadge(icon: categoryIcon(row.category), color: categoryColor(row.category))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(localized("cat_" + row.category)).font(.headline)
+                        Text(subtitle).font(.callout).foregroundStyle(Color.sfText2)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
             }
-            Spacer()
-            CheckDot(checked: row.selected, enabled: row.count > 0 || row.category == Category.documents)
+            .buttonStyle(PressableStyle(scale: 0.97))
+            .disabled(!enabled)
+            if pickable {
+                Button { d.picking = row.category } label: {
+                    Text("pick_items").font(.caption.weight(.semibold)).foregroundStyle(categoryColor(row.category))
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(categoryColor(row.category).opacity(0.16), in: Capsule())
+                }
+                .buttonStyle(PressableStyle())
+            }
+            Button { d.toggle(row.category) } label: { CheckDot(checked: row.selected, enabled: enabled) }
+                .buttonStyle(PressableStyle())
+                .disabled(!enabled)
         }
         .padding(14)
         .background(row.selected ? categoryColor(row.category).opacity(0.12) : Color.sfSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))

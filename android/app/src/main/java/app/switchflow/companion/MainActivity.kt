@@ -1,6 +1,5 @@
 package app.switchflow.companion
 
-import android.Manifest
 import android.app.PendingIntent
 import android.content.Intent
 import android.hardware.usb.UsbAccessory
@@ -17,20 +16,25 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.switchflow.companion.core.CategoryPermissions
 import app.switchflow.companion.core.Phase
 import app.switchflow.companion.direct.DirectQr
 import app.switchflow.companion.direct.DirectStage
 import app.switchflow.companion.direct.UsbDirect
 import app.switchflow.companion.net.CableLink
+import app.switchflow.companion.ui.AllowAllCard
+import app.switchflow.companion.ui.AllowAllScreen
 import app.switchflow.companion.ui.AppHeader
 import app.switchflow.companion.ui.CompanionScreen
 import app.switchflow.companion.ui.DirectActions
 import app.switchflow.companion.ui.DirectScreen
 import app.switchflow.companion.ui.HomeScreen
+import app.switchflow.companion.ui.MediaPickerScreen
 import app.switchflow.companion.ui.ScreenFrame
 import app.switchflow.companion.ui.SwitchFlowTheme
 import com.journeyapps.barcodescanner.ScanContract
@@ -77,7 +81,34 @@ class MainActivity : ComponentActivity() {
         direct.onDocumentsPicked(uris)
     }
 
-    private val notifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    /** Permissions still missing; drives the "allow everything" screen and the home card. */
+    private var missing by mutableStateOf(emptyList<String>())
+    private var showAllowAll by mutableStateOf(false)
+    private var askedBefore = emptyList<String>()
+
+    private val allPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        val store = app.switchflow.companion.core.Store(this)
+        store.allAsked = true
+        showAllowAll = false
+        val now = CategoryPermissions.missing(this)
+        // Nothing changed: Android no longer shows the dialogs ("Don't ask again"). Open the app's settings.
+        if (now.isNotEmpty() && now == askedBefore) openAppSettings()
+        missing = now
+        controller.onPermissionsAnswered()
+        direct.onPermissionsAnswered()
+    }
+
+    private fun allowAll() {
+        askedBefore = CategoryPermissions.missing(this)
+        if (askedBefore.isEmpty()) { showAllowAll = false; return }
+        allPermissions.launch(askedBefore.toTypedArray())
+    }
+
+    private fun openAppSettings() {
+        runCatching {
+            startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+        }
+    }
 
     private fun launchScan(prompt: Int) {
         scan.launch(
@@ -114,6 +145,7 @@ class MainActivity : ComponentActivity() {
             allowInstalls = { runCatching { startActivity(direct.unknownSourcesIntent()) } },
             appIcon = { pkg -> direct.appIcon(pkg, iconPx) },
             inboxIcon = { pkg -> direct.inboxIcon(pkg, iconPx) },
+            pickMedia = direct::openPicker,
         )
     }
 
@@ -121,10 +153,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val store = app.switchflow.companion.core.Store(this)
-        if (Build.VERSION.SDK_INT >= 33 && !store.notificationsAsked) {
-            store.notificationsAsked = true
-            notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
+        missing = CategoryPermissions.missing(this)
+        // First start: one screen asks for everything (photos, videos, music, contacts, calendars, camera).
+        showAllowAll = !store.allAsked && missing.isNotEmpty()
         direct.registerUsb()
         if (savedInstanceState == null) {
             handleTestPairingLink(intent)
@@ -135,6 +166,22 @@ class MainActivity : ComponentActivity() {
             val directState by direct.state.collectAsStateWithLifecycle()
             SwitchFlowTheme {
                 when {
+                    showAllowAll -> ScreenFrame {
+                        AllowAllScreen(onAllow = ::allowAll, onLater = {
+                            store.allAsked = true
+                            showAllowAll = false
+                        })
+                    }
+                    directState.picking != null -> {
+                        val c = directState.picking!!
+                        val (items, albums) = remember(c) { direct.media(c) }
+                        MediaPickerScreen(
+                            category = c, items = items, albums = albums, initial = directState.picked[c],
+                            thumbnail = direct::thumbnail,
+                            onDone = { ids -> direct.setPicked(c, ids) },
+                            onBack = direct::closePicker,
+                        )
+                    }
                     directState.stage != DirectStage.Idle -> ScreenFrame { DirectScreen(directState, actions) }
                     pcOpen || state.phase != Phase.Idle -> CompanionScreen(
                         state = state,
@@ -149,6 +196,7 @@ class MainActivity : ComponentActivity() {
                     else -> ScreenFrame {
                         AppHeader()
                         Spacer(Modifier.height(26.dp))
+                        if (missing.isNotEmpty()) AllowAllCard(onAllow = ::allowAll)
                         HomeScreen(directState, actions)
                     }
                 }
@@ -206,6 +254,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        missing = CategoryPermissions.missing(this)
         checkConnectedAccessory()
         direct.checkUsb()
         direct.refreshInbox()

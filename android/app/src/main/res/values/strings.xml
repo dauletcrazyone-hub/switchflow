@@ -143,4 +143,18 @@
     <string name="err_generic">Something went wrong. Please try again.</string>
     <string name="notif_direct">Phone-to-phone transfer</string>
     <string name="scan_prompt_any">Point the camera at the QR code</string>
+    <string name="picked_of">%1$d of %2$d</string>
+    <string name="picked_done">Done · %1$d selected</string>
+    <string name="pick_items">Choose</string>
+    <string name="all_albums">All</string>
+    <string name="allow_all_title">Allow everything once</string>
+    <string name="allow_all_body">SwitchFlow asks for access to everything it can transfer now, so transfers later do not stop for separate requests.</string>
+    <string name="allow_all_media">Photos and videos</string>
+    <string name="allow_all_camera">Camera, for QR codes</string>
+    <string name="allow_all_notifications">Notifications about the transfer</string>
+    <string name="allow_all_privacy">Nothing leaves your phones; originals are never changed.</string>
+    <string name="allow_all">Allow everything</string>
+    <string name="later">Later</string>
+    <string name="allow_all_card">Allow access to everything</string>
+    <string name="allow_all_card_hint">One tap instead of separate requests during a transfer</string>
 </resources>

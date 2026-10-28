@@ -641,6 +641,7 @@ export class DemoBackend implements Backend {
   });
   revealPath = async () => {};
   adbReverse = async () => {};
+  adbInstall = async () => {};
   cableConnect = async () => 0;
   installCableDriver = async () => {};
   installCompanion = async () => {};

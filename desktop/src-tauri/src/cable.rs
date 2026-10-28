@@ -205,6 +205,9 @@ pub struct Cable {
     first_seen: Mutex<HashMap<(u8, u8), std::time::Instant>>,
     /// iPhones (usbmuxd device ids) with a running link.
     linked_iphones: Mutex<Vec<u64>>,
+    /// Port of the app-file page (apk_server.rs); sent as the accessory URI so a phone without
+    /// SwitchFlow offers to download it. 0 = not serving.
+    apk_port: std::sync::atomic::AtomicU16,
     /// Keeps accessory-mode phones hidden from Windows drivers while SwitchFlow runs.
     #[cfg(windows)]
     _hider: Option<hider::Hider>,
@@ -226,9 +229,14 @@ impl Cable {
             list_failures: AtomicUsize::new(0),
             first_seen: Mutex::default(),
             linked_iphones: Mutex::default(),
+            apk_port: std::sync::atomic::AtomicU16::new(0),
             #[cfg(windows)]
             _hider,
         })
+    }
+
+    pub fn set_apk_port(&self, port: u16) {
+        self.apk_port.store(port, Ordering::Relaxed);
     }
 
     pub fn available(&self) -> bool {
@@ -295,6 +303,9 @@ impl Cable {
         let Some(ctx) = &self.ctx else { return 0 };
         let Ok(list) = ctx.devices() else { return 0 };
         let mut switched = 0;
+        let port = self.apk_port.load(Ordering::Relaxed);
+        // Looked up now: the PC may have changed networks since the app started.
+        let link = if port == 0 { None } else { crate::apk_server::link(port) };
         for dev in list.iter() {
             let Ok(desc) = dev.device_descriptor() else { continue };
             if is_accessory(desc.vendor_id(), desc.product_id()) || !ANDROID_VIDS.contains(&desc.vendor_id()) {
@@ -314,7 +325,7 @@ impl Cable {
                     tracing::info!(ok, "accessory ids: Microsoft OS descriptor query turned off");
                 }
             }
-            match switch_to_accessory(&dev) {
+            match switch_to_accessory(&dev, link.as_deref()) {
                 Ok(proto) => {
                     tracing::info!(protocol = proto, "phone switched to accessory mode");
                     switched += 1;
@@ -544,7 +555,8 @@ pub mod usbflags {
     }
 }
 
-fn switch_to_accessory(dev: &rusb::Device<rusb::Context>) -> rusb::Result<u16> {
+/// `uri`: shown by Android when no installed app handles the accessory (SwitchFlow missing).
+fn switch_to_accessory(dev: &rusb::Device<rusb::Context>, uri: Option<&str>) -> rusb::Result<u16> {
     const TIMEOUT: Duration = Duration::from_secs(2);
     let h = dev.open()?;
     let mut ver = [0u8; 2];
@@ -559,6 +571,14 @@ fn switch_to_accessory(dev: &rusb::Device<rusb::Context>) -> rusb::Result<u16> {
         let mut bytes = s.as_bytes().to_vec();
         bytes.push(0);
         h.write_control(0x40, 52, 0, index as u16, &bytes, TIMEOUT)?;
+    }
+    // String 4, the URI. Optional in AOA: a phone that rejects it still switches.
+    if let Some(uri) = uri {
+        let mut bytes = uri.as_bytes().to_vec();
+        bytes.push(0);
+        if let Err(e) = h.write_control(0x40, 52, 0, 4, &bytes, TIMEOUT) {
+            tracing::info!(error = %e, "phone did not take the accessory URI");
+        }
     }
     // ACCESSORY_START: the phone disconnects and comes back as 18D1:2D0x.
     h.write_control(0x40, 53, 0, 0, &[], TIMEOUT)?;

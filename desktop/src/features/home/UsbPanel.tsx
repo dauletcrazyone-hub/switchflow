@@ -92,9 +92,7 @@ export function UsbPanel() {
               <div className="min-w-0 flex-1">
                 <div className="text-body font-semibold">{t("usb.cableTitle", { count: cablePhones })}</div>
                 <p className="mt-0.5 text-caption text-text-2">{t("usb.cableHint")}</p>
-                {!usb.some((d) => d.platform === "android" && d.source === "wpd") && (
-                  <p className="mt-1 text-caption text-text-2">{t("usb.installHowTo")}</p>
-                )}
+                <p className="mt-1 text-caption text-text-2">{t("usb.cableInstallHint")}</p>
                 <div className="mt-2">
                   <Button size="sm" variant="primary" icon={Cable} loading={switching} onClick={() => void connectByCable()}>
                     {t("usb.cableConnect")}
@@ -189,6 +187,22 @@ export function UsbPanel() {
                     {d.status === "driver_missing" && (
                       <Button size="sm" variant="subtle" iconRight={ExternalLink} onClick={() => void openUrl(APPLE_DEVICES_URL).catch(() => undefined)}>
                         Apple Devices
+                      </Button>
+                    )}
+                    {d.source === "adb" && d.status === "ready" && d.serial && (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        icon={Download}
+                        loading={copying === d.id}
+                        onClick={async () => {
+                          setCopying(d.id);
+                          const ok = await run((b) => b.adbInstall(d.serial!).then(() => true));
+                          setCopying(null);
+                          if (ok) toast("success", t("usb.adbInstalled"));
+                        }}
+                      >
+                        {t("usb.adbInstall")}
                       </Button>
                     )}
                     {d.source === "adb" && d.status === "ready" && d.serial && (

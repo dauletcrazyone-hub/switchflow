@@ -65,6 +65,7 @@ export class TauriBackend implements Backend {
   getAppInfo = () => invoke<AppInfo>("get_app_info");
   revealPath = (path: string) => invoke<void>("reveal_path", { path });
   adbReverse = (serial: string) => invoke<void>("adb_reverse", { serial });
+  adbInstall = (serial: string) => invoke<void>("adb_install", { serial });
   cableConnect = () => invoke<number>("cable_connect");
   installCableDriver = () => invoke<void>("install_cable_driver");
   installCompanion = (device: string) => invoke<void>("install_companion", { device });

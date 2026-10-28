@@ -48,6 +48,7 @@ export interface Backend {
   getAppInfo(): Promise<AppInfo>;
   revealPath(path: string): Promise<void>;
   adbReverse(serial: string): Promise<void>;
+  adbInstall(serial: string): Promise<void>;
   /** Switches connected Android phones into accessory mode; resolves with how many switched. */
   cableConnect(): Promise<number>;
   /** Installs the bundled UsbDk driver (administrator approval); the cable option appears after a restart. */

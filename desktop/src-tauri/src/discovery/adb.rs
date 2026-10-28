@@ -83,9 +83,26 @@ pub fn parse_devices(output: &str) -> Vec<UsbDevice> {
 
 /// `adb -s <serial> reverse tcp:<port> tcp:<port>`: the phone's 127.0.0.1:<port> now
 /// reaches this PC over the cable.
+fn valid_serial(serial: &str) -> bool {
+    !serial.is_empty() && serial.chars().all(|c| c.is_ascii_alphanumeric() || "._:-".contains(c))
+}
+
+/// Installs (or updates) the app with every runtime permission granted up front (`-g`), then opens it.
+/// Only possible because the user turned on USB debugging and allowed this PC on the phone.
+pub fn install(adb: &Path, serial: &str, apk: &Path) -> bool {
+    if !valid_serial(serial) {
+        return false;
+    }
+    let Some(apk) = apk.to_str() else { return false };
+    let ok = run(adb, &["-s", serial, "install", "-r", "-g", apk]).is_some_and(|out| out.contains("Success"));
+    if ok {
+        let _ = run(adb, &["-s", serial, "shell", "am", "start", "-n", "app.switchflow.companion/.MainActivity"]);
+    }
+    ok
+}
+
 pub fn reverse(adb: &Path, serial: &str, port: u16) -> bool {
-    let valid = !serial.is_empty() && serial.chars().all(|c| c.is_ascii_alphanumeric() || "._:-".contains(c));
-    if !valid {
+    if !valid_serial(serial) {
         return false;
     }
     let spec = format!("tcp:{port}");

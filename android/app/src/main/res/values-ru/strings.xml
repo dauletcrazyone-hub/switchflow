@@ -142,4 +142,18 @@
     <string name="err_generic">Что-то пошло не так. Попробуйте ещё раз.</string>
     <string name="notif_direct">Перенос с телефона на телефон</string>
     <string name="scan_prompt_any">Наведите камеру на QR-код</string>
+    <string name="picked_of">%1$d из %2$d</string>
+    <string name="picked_done">Готово · выбрано %1$d</string>
+    <string name="pick_items">Выбрать</string>
+    <string name="all_albums">Все</string>
+    <string name="allow_all_title">Разрешите всё сразу</string>
+    <string name="allow_all_body">SwitchFlow сейчас один раз попросит доступ ко всему, что умеет переносить, — и перенос потом не будет останавливаться на отдельных запросах.</string>
+    <string name="allow_all_media">Фото и видео</string>
+    <string name="allow_all_camera">Камера — для QR-кода</string>
+    <string name="allow_all_notifications">Уведомления о переносе</string>
+    <string name="allow_all_privacy">Данные не уходят с ваших телефонов, оригиналы не изменяются.</string>
+    <string name="allow_all">Разрешить всё</string>
+    <string name="later">Позже</string>
+    <string name="allow_all_card">Разрешить доступ ко всему</string>
+    <string name="allow_all_card_hint">Одно нажатие вместо отдельных запросов во время переноса</string>
 </resources>

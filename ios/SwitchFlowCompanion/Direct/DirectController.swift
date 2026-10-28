@@ -43,6 +43,11 @@ final class DirectController: ObservableObject, TransferListener {
     /// Categories the receiving side is about to ask iOS for; the card explains why first.
     @Published var askingAccess: [String]?
     @Published var askingDocuments = false
+    /** The photo/video grid is open for this category. */
+    @Published var picking: String?
+    /// Hand-picked items per category (asset ids); a category missing here sends everything.
+    @Published var picked: [String: Set<String>] = [:]
+    @Published var pickedBytes: [String: Int64] = [:]
 
     private let wifi = DirectWifi()
     private let catalog = SourceCatalog()
@@ -227,8 +232,30 @@ final class DirectController: ObservableObject, TransferListener {
         }
     }
 
-    var selectedBytes: Int64 { categories.filter(\.selected).reduce(0) { $0 + $1.bytes } }
-    var selectedCount: Int64 { categories.filter(\.selected).reduce(0) { $0 + $1.count } }
+    func chosenCount(_ row: CategoryRow) -> Int64 { picked[row.category].map { Int64($0.count) } ?? row.count }
+    func chosenBytes(_ row: CategoryRow) -> Int64 { pickedBytes[row.category] ?? row.bytes }
+    var selectedBytes: Int64 { categories.filter(\.selected).reduce(0) { $0 + chosenBytes($1) } }
+    var selectedCount: Int64 { categories.filter(\.selected).reduce(0) { $0 + chosenCount($1) } }
+
+    // MARK: Photo/video grid
+
+    func media(_ category: String) -> [SourceItem] { inventories[category]?.items ?? [] }
+
+    func albums(_ category: String) -> [Album] { inventories[category]?.albums ?? [] }
+
+    /// Grid closed with this choice; choosing everything is the same as no choice.
+    func setPicked(_ category: String, _ ids: Set<String>) {
+        let items = media(category)
+        if ids.count == items.count {
+            picked[category] = nil
+            pickedBytes[category] = nil
+        } else {
+            picked[category] = ids
+            pickedBytes[category] = items.filter { ids.contains($0.id) }.reduce(0) { $0 + $1.size }
+        }
+        if let i = categories.firstIndex(where: { $0.category == category }) { categories[i].selected = !ids.isEmpty }
+        picking = nil
+    }
 
     func send() {
         guard let p = activePeer else { fail("lost"); return }
@@ -238,7 +265,8 @@ final class DirectController: ObservableObject, TransferListener {
         for row in categories where row.selected {
             guard let inv = inventories[row.category] else { continue }
             let albums = Dictionary(inv.albums.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
-            for it in inv.items {
+            let only = picked[row.category]
+            for it in inv.items where only?.contains(it.id) ?? true {
                 n += 1
                 let k = String(n)
                 items.append(OfferItem(k: k, c: it.category, n: it.name, s: it.size, m: it.mime.isEmpty ? nil : it.mime,
@@ -482,6 +510,9 @@ final class DirectController: ObservableObject, TransferListener {
         result = nil
         categories = []
         inventories = [:]
+        picking = nil
+        picked = [:]
+        pickedBytes = [:]
         Task { await catalog.clear() }
         UIApplication.shared.isIdleTimerDisabled = false
     }
