@@ -34,6 +34,7 @@ import app.switchflow.companion.ui.CompanionScreen
 import app.switchflow.companion.ui.DirectActions
 import app.switchflow.companion.ui.DirectScreen
 import app.switchflow.companion.ui.HomeScreen
+import app.switchflow.companion.ui.InboxCard
 import app.switchflow.companion.ui.MediaPickerScreen
 import app.switchflow.companion.ui.ScreenFrame
 import app.switchflow.companion.ui.SwitchFlowTheme
@@ -192,6 +193,7 @@ class MainActivity : ComponentActivity() {
                         onDisconnect = controller::disconnect,
                         onDismissMessage = controller::dismissMessage,
                         onBack = if (state.phase == Phase.Idle) ({ pcOpen = false; controller.dismissMessage() }) else null,
+                        extra = { if (directState.inbox.isNotEmpty()) InboxCard(directState, actions) },
                     )
                     else -> ScreenFrame {
                         AppHeader()

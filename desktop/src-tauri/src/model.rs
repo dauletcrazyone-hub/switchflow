@@ -19,17 +19,20 @@ pub enum Category {
     Settings,
     AppData,
     Whatsapp,
+    /// Installed apps (installer files), Android to Android; to an iPhone as an App Store list.
+    Apps,
 }
 
 impl Category {
     /// Categories SwitchFlow can actually move through the companion apps.
-    pub const TRANSFERABLE: [Category; 6] = [
+    pub const TRANSFERABLE: [Category; 7] = [
         Category::Photos,
         Category::Videos,
         Category::Contacts,
         Category::Documents,
         Category::Music,
         Category::Calendars,
+        Category::Apps,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -45,6 +48,7 @@ impl Category {
             Category::Settings => "settings",
             Category::AppData => "appData",
             Category::Whatsapp => "whatsapp",
+            Category::Apps => "apps",
         }
     }
 
@@ -57,6 +61,7 @@ impl Category {
             Category::Documents => "Documents",
             Category::Music => "Music",
             Category::Calendars => "Calendars",
+            Category::Apps => "Apps",
             _ => "Other",
         }
     }
@@ -172,6 +177,47 @@ pub struct SourceItem {
     pub album_ids: Vec<String>,
     #[serde(default)]
     pub item_count: Option<u32>,
+    /// Installer files of an app: which app and which of its files this is.
+    #[serde(default)]
+    pub app: Option<AppMeta>,
+}
+
+/// One installer file (base.apk or a split) of an Android app.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AppMeta {
+    pub pkg: String,
+    pub label: String,
+    pub version_code: u64,
+    #[serde(default)]
+    pub version_name: Option<String>,
+    pub part: u32,
+    pub parts: u32,
+    #[serde(default)]
+    pub min_sdk: Option<u32>,
+}
+
+impl AppMeta {
+    /// A real Android package name: letters, digits, `_` and dots, no `..`, at most 150 chars.
+    pub fn valid_pkg(pkg: &str) -> bool {
+        !pkg.is_empty()
+            && pkg.len() <= 150
+            && pkg.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+            && !pkg.starts_with('.')
+            && !pkg.contains("..")
+    }
+
+    pub fn sanitized(mut self) -> Option<AppMeta> {
+        if !Self::valid_pkg(&self.pkg) || self.parts == 0 || self.parts > 64 || self.part >= self.parts {
+            return None;
+        }
+        self.label = self.label.chars().filter(|c| !c.is_control()).take(80).collect();
+        if self.label.trim().is_empty() {
+            self.label = self.pkg.clone();
+        }
+        self.version_name = self.version_name.map(|v| v.chars().filter(|c| !c.is_control()).take(40).collect());
+        Some(self)
+    }
 }
 
 fn default_true() -> bool {
@@ -195,6 +241,9 @@ pub struct Entry {
     pub name: String,
     #[serde(default)]
     pub detail: String,
+    /// Apps: total size of the app's installer files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

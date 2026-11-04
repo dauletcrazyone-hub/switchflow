@@ -57,6 +57,15 @@ const DEMO_IPHONE: DeviceInfo = {
   charging: true,
 };
 
+const DEMO_APPS: Entry[] = [
+  { id: "com.spotify.music", name: "Spotify", detail: "9.0.94 · 138 MB", bytes: 138 * MB },
+  { id: "kz.kaspi.mobile", name: "Kaspi.kz", detail: "5.110 · 212 MB", bytes: 212 * MB },
+  { id: "org.telegram.messenger", name: "Telegram", detail: "12.1.1 · 96 MB", bytes: 96 * MB },
+  { id: "com.instagram.android", name: "Instagram", detail: "402.0 · 178 MB", bytes: 178 * MB },
+  { id: "ru.yandex.taxi", name: "Yandex Go", detail: "5.40 · 241 MB", bytes: 241 * MB },
+  { id: "com.duolingo", name: "Duolingo", detail: "6.40 · 119 MB", bytes: 119 * MB },
+];
+
 function inventoryFor(platform: DeviceInfo["platform"], category: Category): CategorySummary {
   const base = { category, permission: "granted" as const, note: null, albums: [], scannedMs: Date.now() };
   switch (category) {
@@ -89,6 +98,10 @@ function inventoryFor(platform: DeviceInfo["platform"], category: Category): Cat
         : { ...base, count: 312, totalBytes: Math.round(2.1 * GB) };
     case "calendars":
       return { ...base, count: 128, totalBytes: 96 * 1024 };
+    case "apps":
+      return platform === "ios"
+        ? { ...base, permission: "unavailable", count: 0, totalBytes: 0, note: "ios_apps" }
+        : { ...base, count: DEMO_APPS.length, totalBytes: Math.round(1.4 * GB), entryCount: DEMO_APPS.length };
     default:
       return { ...base, permission: "unavailable", count: 0, totalBytes: 0 };
   }
@@ -610,6 +623,7 @@ export class DemoBackend implements Backend {
     return { ...s };
   };
   getEntries = async (_device: string, category: Category): Promise<Entry[]> => {
+    if (category === "apps") return structuredClone(DEMO_APPS);
     if (category !== "contacts") return [];
     const first = ["Алия", "Бахыт", "Гульнар", "Данияр", "Ерлан", "Жанна", "Зарина", "Ильяс", "Камила", "Марат", "Нурлан", "Сауле"];
     const last = ["Ахметов", "Беков", "Ермеков", "Жумабаев", "Касымов", "Омаров", "Сейткали", "Тулегенов"];

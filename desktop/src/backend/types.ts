@@ -13,9 +13,10 @@ export type Category =
   | "callHistory"
   | "settings"
   | "appData"
-  | "whatsapp";
+  | "whatsapp"
+  | "apps";
 
-export const TRANSFERABLE: Category[] = ["photos", "videos", "contacts", "documents", "music", "calendars"];
+export const TRANSFERABLE: Category[] = ["photos", "videos", "contacts", "documents", "music", "calendars", "apps"];
 export const EXTRA: Category[] = ["messages", "callHistory", "settings", "appData", "whatsapp"];
 
 export type Permission = "granted" | "limited" | "denied" | "unavailable";
@@ -66,6 +67,8 @@ export interface Entry {
   id: string;
   name: string;
   detail: string;
+  /** Apps: the size of all the app's installer files. */
+  bytes?: number;
 }
 
 export interface DeviceView {

@@ -11,9 +11,10 @@
     "callHistory",
     "settings",
     "appData",
-    "whatsapp"
+    "whatsapp",
+    "apps"
   ],
-  "transferable": ["photos", "videos", "contacts", "documents", "music", "calendars"],
+  "transferable": ["photos", "videos", "contacts", "documents", "music", "calendars", "apps"],
   "rules": {
     "photos": {
       "android>ios": { "status": "supported", "note": null },
@@ -74,6 +75,12 @@
       "ios>android": { "status": "unsupported", "note": "compat.appData.sandbox" },
       "android>android": { "status": "official_tool", "note": "compat.official.androidSetup" },
       "ios>ios": { "status": "official_tool", "note": "compat.official.quickStart" }
+    },
+    "apps": {
+      "android>ios": { "status": "action_required", "note": "compat.apps.appStore" },
+      "ios>android": { "status": "unsupported", "note": "compat.apps.iosList" },
+      "android>android": { "status": "supported", "note": "compat.apps.install" },
+      "ios>ios": { "status": "unsupported", "note": "compat.apps.iosList" }
     },
     "whatsapp": {
       "android>ios": { "status": "official_tool", "note": "compat.official.whatsapp" },

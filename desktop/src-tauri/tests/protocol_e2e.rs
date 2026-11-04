@@ -523,3 +523,117 @@ async fn app_restart_gets_its_work_again() {
     assert_eq!(got[0].1.len(), real.len(), "a file that grew since the scan is still transferred whole");
     wait_state(&core, SessionState::Completed).await;
 }
+
+/// Takes delivered items one by one (whole files), returns each item's description and bytes.
+async fn deliver_items(target: &Phone, sid: &str, n: usize) -> Vec<(Value, Vec<u8>)> {
+    let mut got = Vec::new();
+    while got.len() < n {
+        let r: Value = target.get(&format!("/v1/sessions/{sid}/next?wait=5")).await.json().await.unwrap();
+        match r["state"].as_str().unwrap() {
+            "item" => {}
+            "done" => break,
+            _ => continue,
+        }
+        let item = r["item"].clone();
+        let key = item["key"].as_str().unwrap().to_string();
+        let data = target.get(&format!("/v1/sessions/{sid}/items/{key}/content")).await.bytes().await.unwrap().to_vec();
+        assert_eq!(sha(&data), item["sha256"].as_str().unwrap());
+        let r = target
+            .post(&format!("/v1/sessions/{sid}/items/{key}/ack"), json!({ "result": "saved", "sha256": sha(&data), "verification": "read_back" }))
+            .await;
+        assert_eq!(r.status(), 204);
+        got.push((item, data));
+    }
+    got
+}
+
+fn apps_inventory(base: &[u8], split: &[u8], other: &[u8]) -> Value {
+    let meta = |pkg: &str, label: &str, part: u32, parts: u32| json!({ "pkg": pkg, "label": label, "versionCode": 42, "versionName": "1.2", "part": part, "parts": parts, "minSdk": 26 });
+    json!({ "categories": [{ "category": "apps", "permission": "granted", "count": 2, "totalBytes": 0,
+        "items": [
+            { "id": "apps:com.spotify.music:0", "category": "apps", "name": "Spotify.apk", "size": base.len(), "app": meta("com.spotify.music", "Spotify", 0, 2) },
+            { "id": "apps:com.spotify.music:1", "category": "apps", "name": "split_config.arm64_v8a.apk", "size": split.len(), "app": meta("com.spotify.music", "Spotify", 1, 2) },
+            { "id": "apps:org.example.notes:0", "category": "apps", "name": "Notes.apk", "size": other.len(), "app": meta("org.example.notes", "Notes", 0, 1) },
+            { "id": "photos:1", "category": "apps", "name": "not-an-app.jpg", "size": 10 }
+        ],
+        "entries": [
+            { "id": "com.spotify.music", "name": "Spotify", "detail": "1.2" },
+            { "id": "org.example.notes", "name": "Notes", "detail": "1.0" },
+            { "id": "com.not.sent", "name": "Ghost" }
+        ] }]})
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn picked_apps_reach_an_android_target_with_their_files() {
+    let (core, base, fp, _dir) = start_server().await;
+    let mut src = pair(&core, &base, &fp, "android-apps-src", "android").await;
+    let mut tgt = pair(&core, &base, &fp, "android-apps-tgt", "android").await;
+    src.wait_for("role").await;
+    tgt.wait_for("role").await;
+
+    core.request_scan(vec![Category::Apps]).unwrap();
+    src.wait_for("scan").await;
+    let (apk, split, notes) = (bytes(400_000, 1), bytes(70_000, 2), bytes(5_000, 3));
+    src.post("/v1/inventory", apps_inventory(&apk, &split, &notes)).await;
+    let entries = core.entries("android-apps-src", Category::Apps).unwrap();
+    let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(names, vec!["Spotify", "Notes"], "an entry without files and a file without an app are dropped");
+
+    let sid = core
+        .start_session(StartRequest {
+            kind: SessionKind::Transfer,
+            selections: vec![CategorySelection { category: Category::Apps, album_ids: None, entry_ids: Some(vec!["com.spotify.music".into()]) }],
+            contacts_policy: None,
+            backup_path: None,
+            include_previously_transferred: false,
+        })
+        .unwrap();
+    prepare_ok(&mut tgt).await;
+    wait_state(&core, SessionState::Running).await;
+    let up = src.wait_for("upload").await;
+    let list = up["items"].as_array().unwrap();
+    assert_eq!(list.len(), 2, "only the picked app's two files are asked for");
+    for (i, data) in [&apk, &split].into_iter().enumerate() {
+        upload(&src, &sid, list[i]["key"].as_str().unwrap(), data, 64 * 1024).await;
+    }
+    let got = deliver_items(&tgt, &sid, 2).await;
+    for (item, data) in &got {
+        assert_eq!(item["category"], "apps");
+        assert_eq!(item["app"]["pkg"], "com.spotify.music");
+        assert_eq!(item["app"]["parts"], 2);
+        let part = item["app"]["part"].as_u64().unwrap();
+        assert_eq!(data, if part == 0 { &apk } else { &split });
+    }
+    wait_state(&core, SessionState::Completed).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_iphone_gets_the_app_list_and_no_installer_files() {
+    let (core, base, fp, _dir) = start_server().await;
+    let mut src = pair(&core, &base, &fp, "android-apps-src2", "android").await;
+    let mut tgt = pair(&core, &base, &fp, "ios-apps-tgt", "ios").await;
+    src.wait_for("role").await;
+    tgt.wait_for("role").await;
+
+    core.request_scan(vec![Category::Apps]).unwrap();
+    src.wait_for("scan").await;
+    src.post("/v1/inventory", apps_inventory(&bytes(1000, 4), &bytes(1000, 5), &bytes(1000, 6))).await;
+    let sid = core
+        .start_session(StartRequest {
+            kind: SessionKind::Transfer,
+            selections: vec![CategorySelection { category: Category::Apps, album_ids: None, entry_ids: None }],
+            contacts_policy: None,
+            backup_path: None,
+            include_previously_transferred: false,
+        })
+        .unwrap();
+    prepare_ok(&mut tgt).await;
+    wait_state(&core, SessionState::Running).await;
+    let got = deliver_items(&tgt, &sid, 1).await;
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].0["name"], "android-apps.json");
+    let list: Value = serde_json::from_slice(&got[0].1).unwrap();
+    let labels: Vec<&str> = list["apps"].as_array().unwrap().iter().map(|a| a["label"].as_str().unwrap()).collect();
+    assert_eq!(labels, vec!["Spotify", "Notes"], "one line per app, not per installer file");
+    wait_state(&core, SessionState::Completed).await;
+}

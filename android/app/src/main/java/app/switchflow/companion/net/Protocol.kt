@@ -20,7 +20,9 @@ object Category {
     const val DOCUMENTS = "documents"
     const val MUSIC = "music"
     const val CALENDARS = "calendars"
-    val ALL = listOf(PHOTOS, VIDEOS, CONTACTS, DOCUMENTS, MUSIC, CALENDARS)
+    /** Installed apps: installer files, Android to Android (an iPhone gets their names from the PC). */
+    const val APPS = "apps"
+    val ALL = listOf(PHOTOS, VIDEOS, CONTACTS, DOCUMENTS, MUSIC, CALENDARS, APPS)
 }
 
 object Permission {
@@ -88,6 +90,19 @@ data class SourceItem(
     val modifiedMs: Long? = null,
     val albumIds: List<String> = emptyList(),
     val itemCount: Int? = null,
+    val app: AppInfo? = null,
+)
+
+/** One installer file (base.apk or a split) of an app. */
+@Serializable
+data class AppInfo(
+    val pkg: String,
+    val label: String,
+    val versionCode: Long,
+    val versionName: String? = null,
+    val part: Int,
+    val parts: Int,
+    val minSdk: Int? = null,
 )
 
 @Serializable
@@ -95,7 +110,7 @@ data class Album(val id: String, val name: String, val count: Long, val totalByt
 
 /** One contact in the exported vCard, so the PC can offer a pick list. `id` is the card's position. */
 @Serializable
-data class Entry(val id: String, val name: String, val detail: String = "")
+data class Entry(val id: String, val name: String, val detail: String = "", val bytes: Long? = null)
 
 @Serializable
 data class CategoryInventory(
@@ -143,6 +158,7 @@ data class DeliveryItem(
     val albumName: String? = null,
     val itemCount: Int? = null,
     val contactsPolicy: String = "merge",
+    val app: AppInfo? = null,
 )
 
 @Serializable

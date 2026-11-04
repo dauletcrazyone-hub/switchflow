@@ -19,7 +19,9 @@ export function useCategoryState(source: DeviceView | undefined, targetPlatform:
       const rule = compatRule(category, from, targetPlatform);
       const inventory = source?.inventory.find((i) => i.category === category);
       const scanning = !!source?.scanning.includes(category);
-      return { category, rule, inventory, scanning, selected: selection.categories.includes(category) };
+      // Ticked earlier for another direction (swapped phones) but impossible now: not selected.
+      const selected = selection.categories.includes(category) && isTransferableStatus(rule.status);
+      return { category, rule, inventory, scanning, selected };
     });
     const selected = rows.filter((r) => r.selected);
     const ready =
@@ -28,6 +30,11 @@ export function useCategoryState(source: DeviceView | undefined, targetPlatform:
     const pendingScan = selected.some((r) => r.scanning || !r.inventory);
     const bytes = selected.reduce((n, r) => {
       if (!r.inventory) return n;
+      // An iPhone gets only the names of Android apps: a few kilobytes.
+      if (r.category === "apps" && targetPlatform === "ios") return n;
+      const picked = selection.albums[r.category];
+      const sizes = selection.entryBytes?.[r.category];
+      if (r.category === "apps" && picked && sizes) return n + picked.reduce((m, id) => m + (sizes[id] ?? 0), 0);
       const albums = selection.albums[r.category];
       if (albums && r.inventory.albums.length) {
         return n + r.inventory.albums.filter((a) => albums.includes(a.id)).reduce((m, a) => m + a.totalBytes, 0);
@@ -231,7 +238,9 @@ export function CategoryPanel({
             <div className="tabular text-body font-semibold">
               {selected.length === 0
                 ? t("select.nothing")
-                : t("select.summary", { items: t("units.categories", { count: selected.length }), size: formatBytes(lang, bytes) })}
+                : bytes > 0
+                  ? t("select.summary", { items: t("units.categories", { count: selected.length }), size: formatBytes(lang, bytes) })
+                  : t("select.summaryNoSize", { items: t("units.categories", { count: selected.length }) })}
             </div>
             {targetPlatform && (
               <label className="mt-1 flex items-center gap-2 text-caption text-text-2">

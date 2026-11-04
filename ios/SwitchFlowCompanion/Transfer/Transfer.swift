@@ -30,6 +30,9 @@ actor SourceCatalog {
         case Category.music:
             // iOS gives third-party apps no way to export the Music library.
             return CategoryInventory(category: category, permission: PermissionState.unavailable, count: 0, totalBytes: 0)
+        case Category.apps:
+            // iOS lets no app see or copy the other apps on the iPhone.
+            return CategoryInventory(category: category, permission: PermissionState.unavailable, count: 0, totalBytes: 0, note: "ios_apps")
         default:
             break
         }
@@ -307,6 +310,11 @@ struct Receiver {
             let export = try JSONDecoder().decode(CalendarExport.self, from: Data(contentsOf: file))
             let detail = try CalendarService.importEvents(export.events)
             return AckBody(result: "saved", sha256: sha, verification: "written_file", detail: detail)
+        case Category.apps:
+            // Android apps cannot run here: keep their names, to be found in the App Store.
+            let list = try JSONDecoder().decode(AppStoreList.Payload.self, from: Data(contentsOf: file))
+            AppStoreList.add(list.apps)
+            return AckBody(result: "saved", sha256: sha, verification: "written_file")
         default:
             let (_, stored) = try FilesService.store(tempFile: file, category: item.category, name: item.name)
             return AckBody(result: "saved", sha256: stored, verification: "read_back")

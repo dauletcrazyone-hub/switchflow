@@ -64,7 +64,19 @@ pub struct DeliveryItem {
     pub album_name: Option<String>,
     pub item_count: Option<u32>,
     pub contacts_policy: ContactsPolicy,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app: Option<AppMeta>,
 }
+
+/// What an iPhone receives instead of Android apps: their names, to find them in the App Store.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AppListEntry {
+    pub pkg: String,
+    pub label: String,
+}
+
+pub const APP_LIST_FILE: &str = "android-apps.json";
 
 pub enum NextResult {
     Item(DeliveryItem),
@@ -140,6 +152,14 @@ impl Core {
 
             let ledger = self.ledger.lock().unwrap_or_else(|p| p.into_inner());
             let mut items = Vec::new();
+            // Android apps cannot be installed on an iPhone: it gets their names for the App Store.
+            let apps_as_list = target.platform() == Some(Platform::Ios);
+            let mut app_list: Vec<AppListEntry> = Vec::new();
+            let mut list_app = |meta: &AppMeta| {
+                if !app_list.iter().any(|a| a.pkg == meta.pkg) {
+                    app_list.push(AppListEntry { pkg: meta.pkg.clone(), label: meta.label.clone() });
+                }
+            };
             match &source {
                 Endpoint::Device { id: sid, .. } => {
                     let dev = st.devices.get(sid).ok_or(Fault::State("no_source"))?;
@@ -147,15 +167,38 @@ impl Core {
                         let Some(inv) = dev.inventory.get(&sel.category) else {
                             return Err(Fault::State("not_scanned"));
                         };
+                        // Apps picked one by one: their package names (entry ids), never a stale position.
+                        let picked_apps: Option<BTreeSet<&str>> = match (&sel.entry_ids, sel.category) {
+                            (Some(ids), Category::Apps) => Some(
+                                ids.iter().map(String::as_str).filter(|id| inv.entries.iter().any(|e| e.id == *id)).collect(),
+                            ),
+                            _ => None,
+                        };
+                        if picked_apps.as_ref().is_some_and(|p| p.is_empty()) {
+                            continue;
+                        }
                         // Contacts picked one by one: positions of the cards to keep.
                         let picked = match &sel.entry_ids {
-                            Some(ids) if !inv.entries.is_empty() => Some(picked_positions(ids, inv.scanned_ms, inv.entries.len())?),
+                            Some(ids) if sel.category != Category::Apps && !inv.entries.is_empty() => {
+                                Some(picked_positions(ids, inv.scanned_ms, inv.entries.len())?)
+                            }
                             _ => None,
                         };
                         if picked.as_ref().is_some_and(|p| p.is_empty()) {
                             continue;
                         }
                         for si in &inv.items {
+                            if let (Some(p), Some(app)) = (&picked_apps, &si.app) {
+                                if !p.contains(app.pkg.as_str()) {
+                                    continue;
+                                }
+                            }
+                            if apps_as_list && sel.category == Category::Apps {
+                                if let Some(app) = &si.app {
+                                    list_app(app);
+                                }
+                                continue;
+                            }
                             if let Some(albums) = &sel.album_ids {
                                 if !si.album_ids.iter().any(|a| albums.contains(a)) {
                                     continue;
@@ -199,9 +242,16 @@ impl Core {
                                 modified_ms: e.modified_ms,
                                 album_ids: vec![],
                                 item_count: e.item_count,
+                                app: e.app.clone(),
                             },
                             e.album_name.clone(),
                         );
+                        if apps_as_list && e.category == Category::Apps {
+                            if let Some(app) = &e.app {
+                                list_app(app);
+                            }
+                            continue;
+                        }
                         item.staged_owned = false;
                         if file.is_file() {
                             item.state = ItemState::Staged;
@@ -219,12 +269,15 @@ impl Core {
                 Endpoint::Folder { .. } => unreachable!("folders are never sources"),
             }
             drop(ledger);
-            if items.is_empty() {
+            if items.is_empty() && app_list.is_empty() {
                 return Err(Fault::State("nothing_selected"));
             }
 
             let staging_dir = staging_root.join(&id);
             std::fs::create_dir_all(&staging_dir)?;
+            if !app_list.is_empty() {
+                items.push(app_list_item(items.len(), &app_list, &staging_dir)?);
+            }
             let session = Session {
                 id: id.clone(),
                 kind: req.kind,
@@ -713,6 +766,7 @@ impl Core {
                         album_name: it.album_name.clone(),
                         item_count: it.item_count,
                         contacts_policy: policy,
+                        app: it.app.clone(),
                     };
                     s.rt.current = Some(idx);
                     s.rt.dirty = true;
@@ -1153,6 +1207,35 @@ fn picked_positions(ids: &[String], scanned_ms: i64, entries: usize) -> FResult<
     Ok(out)
 }
 
+/// The App Store list for an iPhone, written by the PC itself: ready to deliver, nothing to upload.
+fn app_list_item(index: usize, apps: &[AppListEntry], dir: &std::path::Path) -> FResult<Item> {
+    let body = serde_json::to_vec(&json!({ "version": 1, "apps": apps })).map_err(|_| Fault::BadRequest("app_list"))?;
+    let path = dir.join("app-list.bin");
+    std::fs::write(&path, &body)?;
+    let mut item = new_item(
+        index,
+        &SourceItem {
+            id: "apps:list".into(),
+            category: Category::Apps,
+            name: APP_LIST_FILE.into(),
+            size: body.len() as u64,
+            size_exact: true,
+            mime: "application/json".into(),
+            created_ms: None,
+            modified_ms: None,
+            album_ids: vec![],
+            item_count: Some(apps.len() as u32),
+            app: None,
+        },
+        None,
+    );
+    item.state = ItemState::Staged;
+    item.received = item.size;
+    item.sha256 = Some(crate::checksum::sha256_bytes(&body));
+    item.staged_path = Some(path);
+    Ok(item)
+}
+
 fn new_item(index: usize, si: &SourceItem, album_name: Option<String>) -> Item {
     Item {
         key: Item::key_for(index),
@@ -1167,6 +1250,7 @@ fn new_item(index: usize, si: &SourceItem, album_name: Option<String>) -> Item {
         album_name,
         item_count: si.item_count,
         only_entries: None,
+        app: si.app.clone(),
         state: ItemState::Pending,
         reason: None,
         failed_at: None,

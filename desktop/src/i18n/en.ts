@@ -105,6 +105,7 @@ const en: Dictionary = {
     connected: "{name} connected",
   },
   categories: {
+    apps: { title: "Apps", desc: "Installed apps · Android" },
     photos: { title: "Photos", desc: "Original quality, albums, capture date" },
     videos: { title: "Videos", desc: "Original format, large files" },
     contacts: { title: "Contacts", desc: "Names, numbers, email · vCard" },
@@ -118,6 +119,7 @@ const en: Dictionary = {
     whatsapp: { title: "WhatsApp", desc: "WhatsApp chats and media" },
   },
   units: {
+    apps: { one: "{count} app", few: "{count} apps", many: "{count} apps", other: "{count} apps" },
     photos: { one: "{count} photo", few: "{count} photos", many: "{count} photos", other: "{count} photos" },
     videos: { one: "{count} video", few: "{count} videos", many: "{count} videos", other: "{count} videos" },
     contacts: { one: "{count} contact", few: "{count} contacts", many: "{count} contacts", other: "{count} contacts" },
@@ -128,6 +130,13 @@ const en: Dictionary = {
     categories: { one: "{count} category", few: "{count} categories", many: "{count} categories", other: "{count} categories" },
   },
   select: {
+    appsWhich: "Which apps",
+    appsAll: "all ({count})",
+    appsPicked: "{count} of {total} selected",
+    appsEvery: "All apps",
+    appsSearch: "Search apps",
+    appsNoData: "Only the app itself moves: sign in to your accounts again on the new phone.",
+    iosApps: "iOS gives programs no access to apps",
     title: "What to transfer",
     subtitle: "Pick your data. The phone asks for access only to the categories you choose.",
     selectAll: "Select all available",
@@ -159,6 +168,7 @@ const en: Dictionary = {
     otherHint: "These cannot be moved directly: iOS and Android do not give apps access to them. Official ways are listed below.",
     howTo: "How to move it",
     summary: "Selected: {items} · {size}",
+    summaryNoSize: "Selected: {items}",
     nothing: "Select at least one category",
     start: "Start transfer",
     needBoth: "Connect both phones to choose data",
@@ -166,6 +176,11 @@ const en: Dictionary = {
     previouslyTransferred: "Send again files that were transferred before",
   },
   compat: {
+    apps: {
+      install: "The apps themselves are copied, without logins or saves. On the new phone Android asks you to tap Install for each.",
+      appStore: "Android apps cannot run on an iPhone. The iPhone gets their list with App Store buttons to find each one.",
+      iosList: "iOS lets no program see or copy the apps on an iPhone. Install them again from the App Store or Google Play.",
+    },
     supported: "Supported",
     action_required: "Additional action required",
     official_tool: "Available via an official tool",

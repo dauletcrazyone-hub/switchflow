@@ -113,6 +113,7 @@ const ru = {
     connected: "{name} подключён",
   },
   categories: {
+    apps: { title: "Приложения", desc: "Установленные приложения · Android" },
     photos: { title: "Фотографии", desc: "Исходное качество, альбомы, дата съёмки" },
     videos: { title: "Видео", desc: "Оригинальный формат, крупные файлы" },
     contacts: { title: "Контакты", desc: "Имена, номера, почта · vCard" },
@@ -126,6 +127,7 @@ const ru = {
     whatsapp: { title: "WhatsApp", desc: "Чаты и медиа WhatsApp" },
   },
   units: {
+    apps: { one: "{count} приложение", few: "{count} приложения", many: "{count} приложений", other: "{count} приложения" },
     photos: { one: "{count} фото", few: "{count} фото", many: "{count} фото", other: "{count} фото" },
     videos: { one: "{count} видео", few: "{count} видео", many: "{count} видео", other: "{count} видео" },
     contacts: { one: "{count} контакт", few: "{count} контакта", many: "{count} контактов", other: "{count} контакта" },
@@ -136,6 +138,13 @@ const ru = {
     categories: { one: "{count} категория", few: "{count} категории", many: "{count} категорий", other: "{count} категории" },
   },
   select: {
+    appsWhich: "Какие приложения",
+    appsAll: "все ({count})",
+    appsPicked: "выбрано {count} из {total}",
+    appsEvery: "Все приложения",
+    appsSearch: "Поиск приложения",
+    appsNoData: "Переносится только само приложение: войти в аккаунты на новом телефоне нужно заново.",
+    iosApps: "iOS не даёт программам доступ к приложениям",
     title: "Что перенести",
     subtitle: "Отметьте данные. Телефон попросит доступ только к выбранным категориям.",
     selectAll: "Выбрать всё доступное",
@@ -167,6 +176,7 @@ const ru = {
     otherHint: "Эти данные нельзя перенести напрямую: системы iOS и Android не дают к ним доступа. Ниже — официальные способы.",
     howTo: "Как перенести",
     summary: "Выбрано: {items} · {size}",
+    summaryNoSize: "Выбрано: {items}",
     nothing: "Выберите хотя бы одну категорию",
     start: "Начать перенос",
     needBoth: "Подключите оба телефона, чтобы выбрать данные",
@@ -174,6 +184,11 @@ const ru = {
     previouslyTransferred: "Повторно отправить файлы, уже перенесённые раньше",
   },
   compat: {
+    apps: {
+      install: "Переносятся сами приложения, без входа в аккаунты и сохранений. На новом телефоне Android попросит нажать «Установить» для каждого.",
+      appStore: "Приложения Android не работают на iPhone. На iPhone придёт их список с кнопками «App Store» — найдите там каждое.",
+      iosList: "iOS не даёт ни одной программе увидеть или скопировать приложения iPhone. Установите их заново из App Store или Google Play.",
+    },
     supported: "Поддерживается",
     action_required: "Требуется дополнительное действие",
     official_tool: "Доступен перенос через официальный инструмент",

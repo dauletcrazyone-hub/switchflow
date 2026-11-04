@@ -136,6 +136,9 @@ pub struct Item {
     /// whole vCard; the PC drops the rest before it is stored or delivered).
     #[serde(default)]
     pub only_entries: Option<Vec<u32>>,
+    /// Installer file of an app (category `apps`).
+    #[serde(default)]
+    pub app: Option<crate::model::AppMeta>,
     pub state: ItemState,
     /// Error or skip code (`already_transferred`, `duplicate`, `checksum_mismatch`, ...).
     pub reason: Option<String>,
@@ -510,6 +513,7 @@ mod tests {
             album_name: None,
             item_count: None,
             only_entries: None,
+            app: None,
             state,
             reason: None,
             failed_at: None,

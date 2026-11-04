@@ -118,6 +118,7 @@ fn restore_source(dir: &Path, photos: &Path) -> R<PathBuf> {
             modified_ms: None,
             album_name: Some("SwitchFlow CI".into()),
             item_count: None,
+            app: None,
         });
     }
     // Two contacts the simulator does not have, written the way the Android app writes them.
@@ -137,6 +138,7 @@ fn restore_source(dir: &Path, photos: &Path) -> R<PathBuf> {
         modified_ms: None,
         album_name: None,
         item_count: Some(2),
+        app: None,
     });
     let manifest = Manifest {
         version: 1,

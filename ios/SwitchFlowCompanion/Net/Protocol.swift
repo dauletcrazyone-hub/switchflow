@@ -9,7 +9,9 @@ enum Category {
     static let documents = "documents"
     static let music = "music"
     static let calendars = "calendars"
-    static let all = [photos, videos, contacts, documents, music, calendars]
+    /// Android apps: an iPhone receives their names (AppStoreList) and never sends apps (iOS forbids it).
+    static let apps = "apps"
+    static let all = [photos, videos, contacts, documents, music, calendars, apps]
 }
 
 enum PermissionState {

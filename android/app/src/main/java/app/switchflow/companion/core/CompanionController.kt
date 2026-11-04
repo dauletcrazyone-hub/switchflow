@@ -402,6 +402,8 @@ class CompanionController(private val app: Context) {
         sessionJobs["down:$sid"] = scope.launch(Dispatchers.IO) {
             val end = runCatching { receiver.run(sid) }.getOrDefault("cancelled")
             _state.update { s -> s.copy(transfer = s.transfer?.copy(finished = end, currentName = null)) }
+            // Apps arrived from the PC: start installing (Android asks to confirm each one).
+            (app as app.switchflow.companion.SwitchFlowApp).direct.installReceivedApps()
         }
     }
 

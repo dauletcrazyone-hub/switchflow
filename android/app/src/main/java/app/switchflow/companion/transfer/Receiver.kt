@@ -2,6 +2,8 @@ package app.switchflow.companion.transfer
 
 import android.content.Context
 import app.switchflow.companion.data.CalendarExport
+import app.switchflow.companion.data.AppInbox
+import app.switchflow.companion.data.AppsRepo
 import app.switchflow.companion.data.CalendarRepo
 import app.switchflow.companion.data.ContactsRepo
 import app.switchflow.companion.data.Hashing
@@ -70,6 +72,7 @@ class Receiver(
             when (item.category) {
                 Category.CONTACTS -> saveContacts(sid, item)
                 Category.CALENDARS -> saveCalendars(sid, item)
+                Category.APPS -> saveApp(sid, item)
                 else -> saveMedia(sid, item)
             }
         } catch (e: CancellationException) {
@@ -156,6 +159,31 @@ class Receiver(
             return AckBody("saved", sha256 = stored, verification = "read_back")
         } finally {
             if (!keep) withContext(Dispatchers.IO) { media.discard(entry.uri) }
+        }
+    }
+
+    /**
+     * An app's installer file goes to the install inbox; installing starts after the transfer
+     * (Android asks the user to confirm each app). Already installed (same or newer) is skipped.
+     */
+    private suspend fun saveApp(sid: String, item: DeliveryItem): AckBody {
+        val app = item.app ?: return AckBody("failed", error = "unsupported_format")
+        if (app.minSdk != null && app.minSdk > android.os.Build.VERSION.SDK_INT) return AckBody("failed", error = "incompatible")
+        val installed = AppsRepo(context).installedVersion(app.pkg)
+        if (installed != null && installed >= app.versionCode) return AckBody("duplicate")
+        val inbox = AppInbox(context)
+        val file = inbox.partFile(app.pkg, app.part)
+        var keep = false
+        try {
+            val sha = withContext(Dispatchers.IO) { file.outputStream() }.use { out -> download(sid, item) { b, n -> out.write(b, 0, n) } }
+            if (sha != item.sha256) return AckBody("failed", error = "checksum_mismatch")
+            val (stored, size) = withContext(Dispatchers.IO) { Hashing.sha256(file.inputStream()) }
+            if (stored != item.sha256 || size != item.size) return AckBody("failed", error = "checksum_mismatch")
+            withContext(Dispatchers.IO) { inbox.markReceived(app.pkg, app.label, app.versionCode, app.part, app.parts) }
+            keep = true
+            return AckBody("saved", sha256 = stored, verification = "read_back")
+        } finally {
+            if (!keep) file.delete()
         }
     }
 

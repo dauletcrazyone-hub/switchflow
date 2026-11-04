@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toSelections, useApp } from "../../state/store";
-import { CategoryCard, ContactPicker } from "./CategoryCard";
+import { AppPicker, CategoryCard, ContactPicker } from "./CategoryCard";
 
 beforeEach(() => useApp.setState({ lang: "ru" }));
 afterEach(cleanup);
@@ -116,5 +116,24 @@ describe("ContactPicker", () => {
 
     fireEvent.click(screen.getByText("Все контакты"));
     expect(toSelections(useApp.getState().selection)).toEqual([{ category: "contacts", albumIds: null, entryIds: null }]);
+  });
+
+  it("picks apps one by one and sends their package names", async () => {
+    const getEntries = vi.fn().mockResolvedValue([
+      { id: "com.spotify.music", name: "Spotify", detail: "9.0 · 138 МБ", bytes: 138 },
+      { id: "org.telegram.messenger", name: "Telegram", detail: "12.1 · 96 МБ", bytes: 96 },
+    ]);
+    useApp.setState({
+      backend: { getEntries } as never,
+      selection: { categories: ["apps"], albums: {}, contactsPolicy: "merge", includePrevious: false },
+    });
+    render(<AppPicker deviceId="a25" total={2} />);
+    await waitFor(() => expect(screen.getByText("Telegram")).toBeTruthy());
+    expect(getEntries).toHaveBeenCalledWith("a25", "apps");
+    fireEvent.click(screen.getByText("Telegram"));
+    expect(toSelections(useApp.getState().selection)).toEqual([{ category: "apps", albumIds: null, entryIds: ["com.spotify.music"] }]);
+    expect(useApp.getState().selection.entryBytes?.apps).toEqual({ "com.spotify.music": 138, "org.telegram.messenger": 96 });
+    fireEvent.click(screen.getByText("Все приложения"));
+    expect(toSelections(useApp.getState().selection)).toEqual([{ category: "apps", albumIds: null, entryIds: null }]);
   });
 });

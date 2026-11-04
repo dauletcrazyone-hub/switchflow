@@ -1,5 +1,6 @@
 import {
   AppWindow,
+  LayoutGrid,
   CalendarDays,
   FileText,
   Image,
@@ -26,6 +27,7 @@ export const CATEGORY_ICONS: Record<Category, LucideIcon> = {
   settings: SlidersHorizontal,
   appData: AppWindow,
   whatsapp: MessageCircle,
+  apps: LayoutGrid,
 };
 
 // Each category gets its own calm tint so the grid scans quickly.
@@ -41,6 +43,7 @@ const TINTS: Record<Category, string> = {
   settings: "#9CAAC0",
   appData: "#9CAAC0",
   whatsapp: "#35C98A",
+  apps: "#2EC5D3",
 };
 
 export function CategoryIcon({ category, size = 40, muted }: { category: Category; size?: number; muted?: boolean }) {

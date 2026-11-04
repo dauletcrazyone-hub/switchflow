@@ -30,12 +30,15 @@ export interface Selection {
   albums: Partial<Record<Category, string[] | null>>;
   contactsPolicy: ContactsPolicy;
   includePrevious: boolean;
+  /** Sizes of pickable entries (apps), to show what the picked ones weigh. */
+  entryBytes?: Partial<Record<Category, Record<string, number>>>;
 }
 
 /** What the UI picked, as the backend takes it: for contacts the picked ids are contacts, not albums. */
 export function toSelections(sel: Selection): CategorySelection[] {
   return sel.categories.map((c) =>
-    c === "contacts" ? { category: c, albumIds: null, entryIds: sel.albums[c] ?? null } : { category: c, albumIds: sel.albums[c] ?? null },
+    // Contacts and apps are picked one by one (entry ids); the rest by album.
+    c === "contacts" || c === "apps" ? { category: c, albumIds: null, entryIds: sel.albums[c] ?? null } : { category: c, albumIds: sel.albums[c] ?? null },
   );
 }
 
@@ -67,6 +70,7 @@ interface AppState {
 
   toggleCategory(c: Category, on?: boolean): void;
   setAlbums(c: Category, ids: string[] | null): void;
+  setEntryBytes(c: Category, sizes: Record<string, number>): void;
   setContactsPolicy(p: ContactsPolicy): void;
   setIncludePrevious(on: boolean): void;
   setSelected(categories: Category[]): void;
@@ -220,6 +224,11 @@ export const useApp = create<AppState>((set, get) => ({
   setAlbums(c, ids) {
     const sel = get().selection;
     set({ selection: { ...sel, albums: { ...sel.albums, [c]: ids } } });
+  },
+
+  setEntryBytes(c, sizes) {
+    const sel = get().selection;
+    set({ selection: { ...sel, entryBytes: { ...sel.entryBytes, [c]: sizes } } });
   },
 
   setContactsPolicy(p) {

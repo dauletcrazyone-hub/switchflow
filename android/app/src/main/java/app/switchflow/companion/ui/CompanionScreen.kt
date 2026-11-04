@@ -73,6 +73,8 @@ fun CompanionScreen(
     onDisconnect: () -> Unit,
     onDismissMessage: () -> Unit,
     onBack: (() -> Unit)? = null,
+    /** Shown under the transfer card while connected (apps received from the PC, ready to install). */
+    extra: @Composable () -> Unit = {},
 ) {
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Column(
@@ -99,7 +101,7 @@ fun CompanionScreen(
                     Phase.Idle -> Welcome(state.message, onScan, onDismissMessage)
                     Phase.Connecting -> Waiting(stringResource(R.string.connecting, state.desktopName ?: "PC"), null)
                     Phase.AwaitingApproval -> Waiting(stringResource(R.string.waiting_approval), state.verificationCode)
-                    Phase.Connected, Phase.Reconnecting -> Connected(state, onAllow, onPickDocuments, onSkipDocuments, onDisconnect)
+                    Phase.Connected, Phase.Reconnecting -> Connected(state, onAllow, onPickDocuments, onSkipDocuments, onDisconnect, extra)
                 }
             }
         }
@@ -234,6 +236,7 @@ private fun Connected(
     onPickDocuments: () -> Unit,
     onSkipDocuments: () -> Unit,
     onDisconnect: () -> Unit,
+    extra: @Composable () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Card {
@@ -330,6 +333,8 @@ private fun Connected(
                 }
             }
         }
+
+        extra()
 
         Text(
             stringResource(R.string.originals_safe),

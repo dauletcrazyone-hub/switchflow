@@ -121,3 +121,7 @@
 "allow_all_privacy" = "Nothing leaves your phones; originals are never changed.";
 "allow_all" = "Allow everything";
 "later" = "Later";
+"android_apps_title %lld" = "Apps from Android: %lld";
+"android_apps_hint" = "Android apps cannot run on an iPhone. Find each one in the App Store and sign in again.";
+"app_store" = "App Store";
+"android_apps_clear" = "Remove the list";

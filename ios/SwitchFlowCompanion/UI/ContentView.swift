@@ -64,6 +64,7 @@ struct ContentView: View {
                             .transition(.opacity)
                     }
                     addedContactsCard
+                    androidAppsCard
                 }
                 .padding(22)
                 .animation(.spring(response: 0.42, dampingFraction: 0.86), value: c.phase)
@@ -209,6 +210,43 @@ struct ContentView: View {
             Text("originals_safe").font(.caption).foregroundStyle(Color.sfText2)
             SecondaryButton(title: "disconnect", color: .sfDanger) { c.disconnect() }
                 .padding(.top, 6)
+        }
+    }
+
+    /// Apps the Android phone had: each opens the App Store search for it.
+    @ViewBuilder private var androidAppsCard: some View {
+        if !c.androidApps.isEmpty {
+            card {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "square.grid.2x2.fill").font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(Color(red: 0.18, green: 0.77, blue: 0.83))
+                            .frame(width: 40, height: 40).background(Color(red: 0.18, green: 0.77, blue: 0.83).opacity(0.16), in: Circle())
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("android_apps_title \(c.androidApps.count)").font(.headline)
+                            Text("android_apps_hint").font(.caption).foregroundStyle(Color.sfText2)
+                        }
+                    }
+                    ForEach(c.androidApps, id: \.pkg) { app in
+                        HStack {
+                            Text(app.label).font(.body).lineLimit(1)
+                            Spacer()
+                            Button {
+                                if let url = AppStoreList.searchURL(app.label) { UIApplication.shared.open(url) }
+                            } label: {
+                                Text("app_store").font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 12).padding(.vertical, 7)
+                                    .background(accentGradient, in: Capsule()).foregroundStyle(.white)
+                            }
+                            .buttonStyle(PressableStyle())
+                        }
+                    }
+                    Button(role: .destructive) {
+                        AppStoreList.clear()
+                        c.androidApps = []
+                    } label: { Text("android_apps_clear").font(.callout) }
+                }
+            }
         }
     }
 

@@ -755,7 +755,10 @@ impl Core {
                     it.name = clean_name(&it.name);
                     it.mime = it.mime.chars().take(100).collect();
                     it.album_ids.truncate(16);
+                    it.app = it.app.take().and_then(AppMeta::sanitized);
                 }
+                // An installer file without its app is useless; an app file outside "apps" is foreign.
+                inv.items.retain(|i| (cat == Category::Apps) == i.app.is_some());
                 let mut seen = std::collections::HashSet::new();
                 inv.items.retain(|i| seen.insert(i.id.clone()));
                 inv.total_bytes = inv.items.iter().map(|i| i.size).sum();
@@ -778,6 +781,18 @@ impl Core {
                         e.name = e.name.chars().filter(|c| !c.is_control()).take(120).collect();
                         e.detail = e.detail.chars().filter(|c| !c.is_control()).take(80).collect();
                     }
+                } else if cat == Category::Apps {
+                    // One entry per app, id = package name, only for apps whose files arrived.
+                    let pkgs: std::collections::HashSet<String> =
+                        inv.items.iter().filter_map(|i| i.app.as_ref().map(|a| a.pkg.clone())).collect();
+                    inv.entries.retain(|e| pkgs.contains(&e.id));
+                    let mut seen = std::collections::HashSet::new();
+                    inv.entries.retain(|e| seen.insert(e.id.clone()));
+                    for e in &mut inv.entries {
+                        e.name = e.name.chars().filter(|c| !c.is_control()).take(80).collect();
+                        e.detail = e.detail.chars().filter(|c| !c.is_control()).take(80).collect();
+                    }
+                    inv.count = inv.entries.len() as u64;
                 } else {
                     inv.entries.clear();
                 }

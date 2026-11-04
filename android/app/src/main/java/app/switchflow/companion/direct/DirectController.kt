@@ -247,6 +247,14 @@ class DirectController(private val app: Context) {
         }
     }
 
+    /** Apps that arrived another way (from the PC): show them and start installing. */
+    fun installReceivedApps() {
+        val received = inbox.list()
+        _state.update { it.copy(inbox = mergeInbox(it.inbox), canInstall = inbox.canInstall()) }
+        if (received.isEmpty()) return
+        if (inbox.canInstall()) installAll() else autoInstall = true
+    }
+
     /** Waiting for "Install unknown apps" to be allowed in Settings; install as soon as it is. */
     @Volatile private var autoInstall = false
 

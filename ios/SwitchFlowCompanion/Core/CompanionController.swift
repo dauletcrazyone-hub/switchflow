@@ -41,6 +41,8 @@ final class CompanionController: ObservableObject {
     /// Result of the last removal, shown once.
     @Published var removedContacts: Int?
     @Published var removeFailed = false
+    /// Apps from an Android phone, to find in the App Store (Android apps cannot run on an iPhone).
+    @Published var androidApps = AppStoreList.all
 
     var foreground = true
     private var api: APIClient?
@@ -306,6 +308,7 @@ final class CompanionController: ObservableObject {
         case Category.calendars: return await CalendarService.authorize()
         case Category.documents: return PermissionState.granted
         case Category.music: return write ? PermissionState.granted : PermissionState.unavailable
+        case Category.apps: return write ? PermissionState.granted : PermissionState.unavailable
         default: return PermissionState.unavailable
         }
     }
@@ -427,6 +430,7 @@ final class CompanionController: ObservableObject {
             let end = await receiver.run(sid)
             transfer?.finished = end
             addedContacts = ContactsService.added.count
+            androidApps = AppStoreList.all
             transfer?.currentName = nil
             sessionTasks["down:\(sid)"] = nil
             UIApplication.shared.isIdleTimerDisabled = false

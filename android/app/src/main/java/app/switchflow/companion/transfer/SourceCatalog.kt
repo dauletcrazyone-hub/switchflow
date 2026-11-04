@@ -8,8 +8,11 @@ import app.switchflow.companion.data.CalendarRepo
 import app.switchflow.companion.data.ContactsRepo
 import app.switchflow.companion.data.MediaStoreRepo
 import app.switchflow.companion.data.VCardCodec
+import app.switchflow.companion.data.AppsRepo
+import app.switchflow.companion.net.AppInfo
 import app.switchflow.companion.net.Category
 import app.switchflow.companion.net.CategoryInventory
+import app.switchflow.companion.net.Entry
 import app.switchflow.companion.net.Permission
 import app.switchflow.companion.net.ProtocolJson
 import app.switchflow.companion.net.SourceItem
@@ -33,6 +36,7 @@ class SourceCatalog(private val context: Context) {
 
     fun scan(category: String, permission: String): CategoryInventory {
         if (category == Category.DOCUMENTS) return scanDocuments()
+        if (category == Category.APPS) return scanApps()
         if (permission != Permission.GRANTED && permission != Permission.LIMITED) {
             return CategoryInventory(category, permission, 0, 0)
         }
@@ -94,6 +98,36 @@ class SourceCatalog(private val context: Context) {
 
     /** The MediaStore address of a listed photo, video or song (for thumbnails). */
     fun uri(sourceId: String): Uri? = uris[sourceId]
+
+    /**
+     * Apps the user installed: one item per installer file (base + splits), one pick-list entry per
+     * app. Reading installer files needs no permission.
+     */
+    private fun scanApps(): CategoryInventory {
+        val apps = runCatching { AppsRepo(context).list() }.getOrDefault(emptyList())
+        val items = ArrayList<SourceItem>()
+        val entries = ArrayList<Entry>()
+        for (a in apps) {
+            a.apks.forEachIndexed { i, f ->
+                val id = "${Category.APPS}:${a.pkg}:$i"
+                files[id] = f
+                items += SourceItem(
+                    id = id,
+                    category = Category.APPS,
+                    name = if (i == 0) "${a.label}.apk" else f.name,
+                    size = f.length(),
+                    mime = "application/vnd.android.package-archive",
+                    app = AppInfo(a.pkg, a.label, a.versionCode, a.versionName.ifBlank { null }, i, a.apks.size, a.minSdk.takeIf { it > 0 }),
+                )
+            }
+            entries += Entry(
+                a.pkg, a.label,
+                listOf(a.versionName, android.text.format.Formatter.formatShortFileSize(context, a.size)).filter { it.isNotBlank() }.joinToString(" · "),
+                bytes = a.size,
+            )
+        }
+        return CategoryInventory(Category.APPS, Permission.GRANTED, apps.size.toLong(), items.sumOf { it.size }, items = items, entries = entries)
+    }
 
     /** Opens the original for reading. Never opens anything for writing. */
     fun open(sourceId: String): InputStream {

@@ -44,6 +44,9 @@ pub struct ManifestItem {
     pub album_name: Option<String>,
     #[serde(default)]
     pub item_count: Option<u32>,
+    /// App installer files keep their app, so a restore can install them again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app: Option<crate::model::AppMeta>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,6 +109,7 @@ pub fn write_manifest(dir: &Path, s: &Session, device: Option<&DeviceInfo>) -> s
                 modified_ms: i.modified_ms,
                 album_name: i.album_name.clone(),
                 item_count: i.item_count,
+                app: i.app.clone(),
             })
         })
         .collect();

@@ -5,6 +5,7 @@ import { Button } from "../../components/ui/Button";
 import { Badge } from "../../components/ui/Controls";
 import { formatNumber } from "../../i18n";
 import { motionTokens } from "../../lib/ui";
+import { compatRule, isTransferableStatus } from "../../lib/compat";
 import { toSelections, useApp, useT } from "../../state/store";
 import { CategoryPanel } from "./CategoryPanel";
 import { DeviceStage, useSlots } from "./DeviceStage";
@@ -81,10 +82,14 @@ function SetupView() {
 
   const start = async () => {
     setStarting(true);
+    // Only what this direction can move (a category ticked before swapping may not be).
+    const from = source?.info.platform ?? null;
+    const to = target?.info.platform ?? null;
+    const possible = { ...selection, categories: selection.categories.filter((c) => isTransferableStatus(compatRule(c, from, to).status)) };
     await run((b) =>
       b.startSession({
         kind: "transfer",
-        selections: toSelections(selection),
+        selections: toSelections(possible),
         contactsPolicy: selection.contactsPolicy,
         includePreviouslyTransferred: selection.includePrevious,
       }),

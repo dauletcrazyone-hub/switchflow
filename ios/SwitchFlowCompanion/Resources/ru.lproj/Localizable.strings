@@ -121,3 +121,7 @@
 "allow_all_privacy" = "Данные не уходят с ваших телефонов, оригиналы не изменяются.";
 "allow_all" = "Разрешить всё";
 "later" = "Позже";
+"android_apps_title %lld" = "Приложения с Android: %lld";
+"android_apps_hint" = "Приложения Android не работают на iPhone. Найдите каждое в App Store и войдите в аккаунт заново.";
+"app_store" = "App Store";
+"android_apps_clear" = "Убрать список";

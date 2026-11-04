@@ -172,6 +172,87 @@ export function ContactPicker({ deviceId, total, scannedMs }: { deviceId: string
   );
 }
 
+/** Picks apps one by one (by package name, so a new count keeps the choice). */
+export function AppPicker({ deviceId, total }: { deviceId: string; total: number }) {
+  const t = useT();
+  const backend = useApp((s) => s.backend);
+  const selected = useApp((s) => s.selection.albums.apps ?? null);
+  const setAlbums = useApp((s) => s.setAlbums);
+  const setEntryBytes = useApp((s) => s.setEntryBytes);
+  const [entries, setEntries] = useState<Entry[] | null>(null);
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    let live = true;
+    setEntries(null);
+    backend
+      .getEntries(deviceId, "apps")
+      .then((e) => {
+        if (!live) return;
+        setEntries(e);
+        setEntryBytes("apps", Object.fromEntries(e.map((x) => [x.id, x.bytes ?? 0])));
+      })
+      .catch(() => live && setEntries([]));
+    return () => {
+      live = false;
+    };
+  }, [backend, deviceId, total, setEntryBytes]);
+
+  const q = query.trim().toLowerCase();
+  const found = (entries ?? []).filter((e) => !q || e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q));
+  const isOn = (id: string) => selected === null || selected.includes(id);
+  const toggle = (id: string) => {
+    const current = selected ?? (entries ?? []).map((e) => e.id);
+    const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
+    setAlbums("apps", entries && next.length === entries.length ? null : next);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-caption font-semibold text-text-2">
+          {t("select.appsWhich")} · {selected === null ? t("select.appsAll", { count: total }) : t("select.appsPicked", { count: selected.length, total })}
+        </span>
+        <div className="flex gap-3">
+          <button className="text-caption font-medium text-accent hover:underline" onClick={() => setAlbums("apps", null)}>
+            {t("select.appsEvery")}
+          </button>
+          <button className="text-caption font-medium text-accent hover:underline" onClick={() => setAlbums("apps", [])}>
+            {t("select.contactsNone")}
+          </button>
+        </div>
+      </div>
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={t("select.appsSearch")}
+        aria-label={t("select.appsSearch")}
+        className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-callout outline-none focus:border-accent"
+      />
+      {entries === null ? (
+        <Skeleton className="h-24 w-full" />
+      ) : found.length === 0 ? (
+        <p className="text-callout text-text-3">{t("select.contactsNotFound")}</p>
+      ) : (
+        <div className="max-h-72 overflow-y-auto rounded-xl border border-line">
+          {found.map((e) => (
+            <label
+              key={e.id}
+              className="flex cursor-default items-center gap-2.5 px-2.5 py-1.5 transition-colors hover:bg-line"
+              onClick={() => toggle(e.id)}
+            >
+              <Checkbox checked={isOn(e.id)} label={e.name} size={18} onChange={() => toggle(e.id)} />
+              <span className="min-w-0 flex-1 truncate text-callout">{e.name}</span>
+              <span className="truncate text-caption text-text-3">{e.detail}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      <p className="text-caption text-text-3">{t("select.appsNoData")}</p>
+    </div>
+  );
+}
+
 function ContactsPolicyPicker() {
   const t = useT();
   const policy = useApp((s) => s.selection.contactsPolicy);
@@ -250,6 +331,7 @@ export function CategoryCard({
       </span>
     );
   else if (inventory?.note === "not_picked") meta = <span className="text-text-3">{t("select.notPicked")}</span>;
+  else if (inventory?.note === "ios_apps") meta = <span className="text-text-3">{t("select.iosApps")}</span>;
   else if (inventory?.permission === "denied") meta = <span className="text-danger">{t("select.denied")}</span>;
   else if (inventory?.permission === "unavailable") meta = <span className="text-text-3">{t("select.unavailable")}</span>;
   else if (inventory)
@@ -260,7 +342,8 @@ export function CategoryCard({
     );
   else meta = <span className="text-text-3">{t("select.tapToCheck")}</span>;
 
-  const hasDetails = !!note || !transferable || (inventory?.albums.length ?? 0) > 0 || category === "contacts" || !!denied || inventory?.permission === "limited";
+  const hasDetails =
+    !!note || !transferable || (inventory?.albums.length ?? 0) > 0 || category === "contacts" || category === "apps" || !!denied || inventory?.permission === "limited";
 
   return (
     <motion.div
@@ -335,6 +418,9 @@ export function CategoryCard({
                 <ContactPicker deviceId={sourceId} total={inventory!.count} scannedMs={inventory!.scannedMs} />
               )}
               {transferable && category === "contacts" && <ContactsPolicyPicker />}
+              {transferable && category === "apps" && sourceId && (inventory?.entryCount ?? 0) > 0 && (
+                <AppPicker deviceId={sourceId} total={inventory!.count} />
+              )}
             </div>
           </motion.div>
         )}
