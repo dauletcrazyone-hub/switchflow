@@ -260,6 +260,11 @@ pub async fn install_cable_driver(app: AppHandle) -> FResult<()> {
     if !msi.exists() {
         return Err(Fault::State("driver_missing"));
     }
+    // Run it from a copy in the temp folder: from the Microsoft Store package the bundled file sits
+    // in WindowsApps, which Windows Installer (a process outside the package) may not read.
+    let copy = std::env::temp_dir().join("SwitchFlow-UsbDk_x64.msi");
+    std::fs::copy(&msi, &copy).map_err(|_| Fault::State("driver_missing"))?;
+    let msi = copy;
     let status = tauri::async_runtime::spawn_blocking(move || {
         let mut cmd = std::process::Command::new("powershell");
         cmd.args([

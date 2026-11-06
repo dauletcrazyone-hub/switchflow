@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "tauri": "tauri",
     "tauri:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/windows/fetch-usbdk.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/windows/prepare-companion.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/windows/fetch-ipa.ps1 && tauri dev",
-    "tauri:build": "powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/windows/fetch-usbdk.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/windows/prepare-companion.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/windows/fetch-ipa.ps1 && tauri build"
+    "tauri:build": "powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/windows/fetch-usbdk.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/windows/prepare-companion.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/windows/fetch-ipa.ps1 && tauri build",
+    "tauri:msix": "npm run tauri:build && powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/windows/package-msix.ps1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",
