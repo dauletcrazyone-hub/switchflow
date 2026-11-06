@@ -36,6 +36,7 @@ import app.switchflow.companion.ui.DirectScreen
 import app.switchflow.companion.ui.HomeScreen
 import app.switchflow.companion.ui.InboxCard
 import app.switchflow.companion.ui.MediaPickerScreen
+import app.switchflow.companion.ui.Paywall
 import app.switchflow.companion.ui.ScreenFrame
 import app.switchflow.companion.ui.SwitchFlowTheme
 import com.journeyapps.barcodescanner.ScanContract
@@ -147,6 +148,9 @@ class MainActivity : ComponentActivity() {
             appIcon = { pkg -> direct.appIcon(pkg, iconPx) },
             inboxIcon = { pkg -> direct.inboxIcon(pkg, iconPx) },
             pickMedia = direct::openPicker,
+            buyPro = { direct.buyPro(this) },
+            restorePro = direct::restorePro,
+            closePaywall = direct::closePaywall,
         )
     }
 
@@ -172,6 +176,12 @@ class MainActivity : ComponentActivity() {
                             store.allAsked = true
                             showAllowAll = false
                         })
+                    }
+                    directState.paywall -> ScreenFrame {
+                        Paywall(
+                            price = directState.proPrice, busy = directState.proBusy,
+                            onBuy = actions.buyPro, onRestore = actions.restorePro, onClose = actions.closePaywall,
+                        )
                     }
                     directState.picking != null -> {
                         val c = directState.picking!!

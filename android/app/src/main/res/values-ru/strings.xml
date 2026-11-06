@@ -160,4 +160,15 @@
     <string name="not_sent_installed">Уже установлено на телефоне-получателе (та же или более новая версия).</string>
     <string name="not_sent_old_android">Нужна более новая версия Android, чем на телефоне-получателе.</string>
     <string name="not_sent_invalid">Не удалось прочитать файлы приложения.</string>
+    <string name="pro_subtitle">Одна покупка — навсегда. Переносите всё и сколько угодно раз.</string>
+    <string name="pro_perk_unlimited">Фото и видео без ограничений</string>
+    <string name="pro_perk_video">Видео любого размера</string>
+    <string name="pro_perk_music">Музыка</string>
+    <string name="pro_perk_docs">Документы</string>
+    <string name="pro_perk_once">Один платёж, без подписки</string>
+    <string name="pro_free_is">Бесплатно: контакты, календари и до %1$d фото и видео за перенос. Получать — всегда бесплатно.</string>
+    <string name="pro_buy_price">Купить Pro · %1$s</string>
+    <string name="pro_buy">Купить Pro</string>
+    <string name="pro_restore">Восстановить покупку</string>
+    <string name="not_sent_no_install">Версия из Google Play не умеет устанавливать приложения. Используйте полную версию из программы SwitchFlow на ПК.</string>
 </resources>

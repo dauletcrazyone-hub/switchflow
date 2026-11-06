@@ -161,4 +161,15 @@
     <string name="not_sent_installed">Already installed on the receiving phone (same or newer version).</string>
     <string name="not_sent_old_android">Needs a newer Android than the receiving phone has.</string>
     <string name="not_sent_invalid">The app files could not be read.</string>
+    <string name="pro_subtitle">One purchase, yours for good. Move everything, as many times as you need.</string>
+    <string name="pro_perk_unlimited">Unlimited photos and videos</string>
+    <string name="pro_perk_video">Videos of any size</string>
+    <string name="pro_perk_music">Music</string>
+    <string name="pro_perk_docs">Documents</string>
+    <string name="pro_perk_once">One payment, no subscription</string>
+    <string name="pro_free_is">Free: contacts, calendars and up to %1$d photos and videos per transfer. Receiving is always free.</string>
+    <string name="pro_buy_price">Get Pro · %1$s</string>
+    <string name="pro_buy">Get Pro</string>
+    <string name="pro_restore">Restore purchase</string>
+    <string name="not_sent_no_install">This version from Google Play cannot install apps. Use the full version from the SwitchFlow PC app.</string>
 </resources>

@@ -91,6 +91,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.switchflow.companion.R
+import app.switchflow.companion.billing.FreeTier
 import app.switchflow.companion.core.PermissionAsk
 import app.switchflow.companion.data.InstalledApp
 import app.switchflow.companion.direct.DirectCategory
@@ -132,6 +133,9 @@ class DirectActions(
     val inboxIcon: (String) -> Bitmap?,
     /** Opens the photo/video grid for a category. */
     val pickMedia: (String) -> Unit,
+    val buyPro: () -> Unit,
+    val restorePro: () -> Unit,
+    val closePaywall: () -> Unit,
 )
 
 // ------------------------------------------------------------------- home
@@ -433,6 +437,13 @@ private fun Choose(state: DirectUi, a: DirectActions) {
         PeerChip(state)
         Spacer(Modifier.height(2.dp))
         Text(stringResource(R.string.choose_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 4.dp))
+        if (!state.pro) {
+            Text(
+                stringResource(R.string.pro_free_is, FreeTier.MEDIA_LIMIT),
+                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+        }
         if (state.needsReadAccess) {
             SfCard(tint = SF.Accent.copy(alpha = 0.14f)) {
                 Column {
@@ -460,7 +471,11 @@ private fun Choose(state: DirectUi, a: DirectActions) {
                 else -> "${row.count} · ${bytes(row.bytes)}"
             }
             val pickable = enabled && (row.category == Category.PHOTOS || row.category == Category.VIDEOS)
-            CategoryItem(row.category, subtitle, row.selected, enabled || isDocs, onPick = if (pickable) ({ a.pickMedia(row.category) }) else null) {
+            CategoryItem(
+                row.category, subtitle, row.selected, enabled || isDocs,
+                onPick = if (pickable) ({ a.pickMedia(row.category) }) else null,
+                pro = !state.pro && !FreeTier.isFree(row.category),
+            ) {
                 if (isDocs) a.pickDocuments() else a.toggleCategory(row.category)
             }
         }
@@ -495,6 +510,7 @@ private fun CategoryItem(
     enabled: Boolean,
     chevron: Boolean = false,
     onPick: (() -> Unit)? = null,
+    pro: Boolean = false,
     onClick: () -> Unit,
 ) {
     Row(
@@ -509,7 +525,13 @@ private fun CategoryItem(
         IconBadge(categoryIcon(category), categoryColor(category))
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(categoryName(category), style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(categoryName(category), style = MaterialTheme.typography.titleMedium)
+                if (pro) {
+                    Spacer(Modifier.width(8.dp))
+                    ProMark()
+                }
+            }
             Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (onPick != null) {
@@ -688,6 +710,7 @@ private fun Finished(state: DirectUi, a: DirectActions) {
                                         when (n.reason) {
                                             "installed" -> R.string.not_sent_installed
                                             "old_android" -> R.string.not_sent_old_android
+                                            "no_install" -> R.string.not_sent_no_install
                                             else -> R.string.not_sent_invalid
                                         },
                                     ),

@@ -1,5 +1,6 @@
 package app.switchflow.companion.transfer
 
+import app.switchflow.companion.BuildConfig
 import android.content.Context
 import app.switchflow.companion.data.CalendarExport
 import app.switchflow.companion.data.AppInbox
@@ -168,6 +169,8 @@ class Receiver(
      */
     private suspend fun saveApp(sid: String, item: DeliveryItem): AckBody {
         val app = item.app ?: return AckBody("failed", error = "unsupported_format")
+        // The Google Play build may not install apps (Play policy).
+        if (!BuildConfig.APP_TRANSFER) return AckBody("failed", error = "store_build")
         if (app.minSdk != null && app.minSdk > android.os.Build.VERSION.SDK_INT) return AckBody("failed", error = "incompatible")
         val installed = AppsRepo(context).installedVersion(app.pkg)
         if (installed != null && installed >= app.versionCode) return AckBody("duplicate")

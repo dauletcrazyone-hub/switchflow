@@ -1,5 +1,6 @@
 package app.switchflow.companion.direct
 
+import app.switchflow.companion.BuildConfig
 import android.content.Context
 import android.os.Build
 import app.switchflow.companion.core.DeviceEnv
@@ -62,6 +63,8 @@ class AndroidSink(
 
     /** Null when the app should come; otherwise why not (shown to the user on both phones). */
     private fun appSkipReason(app: AppMeta?): String? {
+        // The Google Play build may not install apps (Play policy).
+        if (!BuildConfig.APP_TRANSFER) return "no_install"
         if (app == null) return "invalid"
         if (app.minSdk > Build.VERSION.SDK_INT) return "old_android"
         val installed = apps.installedVersion(app.pkg) ?: return null

@@ -1,5 +1,6 @@
 package app.switchflow.companion.transfer
 
+import app.switchflow.companion.BuildConfig
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -104,6 +105,10 @@ class SourceCatalog(private val context: Context) {
      * app. Reading installer files needs no permission.
      */
     private fun scanApps(): CategoryInventory {
+        // The Google Play build cannot move apps (Play forbids installing apps from outside Play).
+        if (!BuildConfig.APP_TRANSFER) {
+            return CategoryInventory(Category.APPS, Permission.UNAVAILABLE, 0, 0, note = "store_build")
+        }
         val apps = runCatching { AppsRepo(context).list() }.getOrDefault(emptyList())
         val items = ArrayList<SourceItem>()
         val entries = ArrayList<Entry>()

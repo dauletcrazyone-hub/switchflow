@@ -12,6 +12,8 @@ import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
 import app.switchflow.companion.BuildConfig
+import app.switchflow.companion.billing.FreeTier
+import app.switchflow.companion.billing.ProStore
 import app.switchflow.companion.R
 import app.switchflow.companion.core.CategoryPermissions
 import app.switchflow.companion.core.DeviceEnv
@@ -115,6 +117,12 @@ data class DirectUi(
     val pickedBytes: Map<String, Long> = emptyMap(),
     /** Apps the receiver did not need or cannot run; shown on the finish screen of both phones. */
     val notSent: List<NotSent> = emptyList(),
+    /** Pro unlocked (always, in the full build). */
+    val pro: Boolean = true,
+    val proPrice: String? = null,
+    val proBusy: Boolean = false,
+    /** The free version would send more than it may: the Pro offer is on screen. */
+    val paywall: Boolean = false,
 ) {
     fun chosenCount(row: CategoryRow): Long = picked[row.category]?.size?.toLong() ?: row.count
     fun chosenBytes(row: CategoryRow): Long = pickedBytes[row.category] ?: row.bytes
@@ -126,8 +134,20 @@ data class DirectUi(
  * Phone-to-phone transfer (docs/DIRECT.md): QR + Wi-Fi in both directions between Android and iPhone,
  * and a Type-C cable between two Androids. UI observes [state]; the work runs on IO threads.
  */
-class DirectController(private val app: Context) {
+class DirectController(private val app: Context, private val proStore: ProStore) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    init {
+        scope.launch { proStore.pro.collect { on -> _state.update { it.copy(pro = on, paywall = it.paywall && !on) } } }
+        scope.launch { proStore.price.collect { p -> _state.update { it.copy(proPrice = p) } } }
+        scope.launch { proStore.busy.collect { b -> _state.update { it.copy(proBusy = b) } } }
+    }
+
+    fun closePaywall() = _state.update { it.copy(paywall = false) }
+
+    fun restorePro() = proStore.restore()
+
+    fun buyPro(activity: android.app.Activity) = proStore.buy(activity)
     private val store = Store(app)
     private val catalog = SourceCatalog(app)
     private val appsRepo = AppsRepo(app)
@@ -303,7 +323,8 @@ class DirectController(private val app: Context) {
                 DirectType.CANCEL -> onPeerCancel(p, r)
             }
         }
-        val peerIsAndroid = p.hello.device.platform == "android"
+        // Apps go only to another Android, and only from the full build (Play forbids installing them).
+        val peerIsAndroid = p.hello.device.platform == "android" && BuildConfig.APP_TRANSFER
         _state.update {
             it.copy(
                 stage = DirectStage.Choosing, role = DirectIntent.SEND, peer = p.hello.device, viaCable = isCable(p),
@@ -417,6 +438,14 @@ class DirectController(private val app: Context) {
     fun send() {
         val p = peer ?: return fail("lost")
         val s = _state.value
+        if (!s.pro) {
+            val chosen = s.categories.filter { it.selected }.associate { it.category to s.chosenCount(it) } +
+                (if (s.selectedApps.isEmpty()) emptyMap() else mapOf(DirectCategory.APPS to s.selectedApps.size.toLong()))
+            if (FreeTier.needsPro(chosen)) {
+                _state.update { it.copy(paywall = true) }
+                return
+            }
+        }
         val sources = HashMap<String, () -> java.io.InputStream?>()
         var n = 0
         val next = { (++n).toString() }

@@ -1,15 +1,15 @@
 # Puts the SwitchFlow Android app into the PC installer: the PC copies it to a phone over the cable
 # ("Install SwitchFlow on the phone", src/commands.rs install_companion). Only a release APK signed
 # with the SwitchFlow release key is accepted — never the debug build (it has test-only hooks).
-# Build it first (docs/BUILD_ANDROID.md):  . $env:USERPROFILE\.switchflow\release-signing.ps1; ./gradlew assembleRelease
+# Build it first (docs/BUILD_ANDROID.md):  . $env:USERPROFILE\.switchflow\release-signing.ps1; ./gradlew assembleFullRelease
 $ErrorActionPreference = "Stop"
 # Started from PowerShell 7, Windows PowerShell inherits its module path and cannot load its own
 # Get-FileHash / Get-AuthenticodeSignature. Use this PowerShell's modules.
 $env:PSModulePath = "$PSHOME\Modules;" + [Environment]::GetEnvironmentVariable("PSModulePath", "Machine")
-$apk = Join-Path $PSScriptRoot "..\..\..\android\app\build\outputs\apk\release\app-release.apk"
+$apk = Join-Path $PSScriptRoot "..\..\..\android\app\build\outputs\apk\full\release\app-full-release.apk"
 $out = Join-Path $PSScriptRoot "companion\SwitchFlow.apk"
 if (-not (Test-Path $apk)) {
-    throw "No release APK at $apk. Build it: cd android; . `$env:USERPROFILE\.switchflow\release-signing.ps1; ./gradlew assembleRelease"
+    throw "No release APK at $apk. Build it: cd android; . `$env:USERPROFILE\.switchflow\release-signing.ps1; ./gradlew assembleFullRelease"
 }
 $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { (Get-Content (Join-Path $PSScriptRoot "..\..\..\android\local.properties") | Where-Object { $_ -match "^sdk.dir=" }) -replace "^sdk.dir=", "" }
 $apksigner = Get-ChildItem (Join-Path $sdk "build-tools\*\apksigner.bat") | Sort-Object FullName | Select-Object -Last 1

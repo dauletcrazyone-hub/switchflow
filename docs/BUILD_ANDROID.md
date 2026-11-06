@@ -2,7 +2,7 @@
 
 ## Требования
 - JDK 17 (например, Eclipse Temurin 17).
-- Android SDK: Platform 35, Build-Tools 35.0.0, Platform-Tools. Проще всего — Android Studio.
+- Android SDK: Platform 36, Build-Tools 35.0.0, Platform-Tools. Проще всего — Android Studio.
 - Телефон с Android 9 или новее (проверено на Android 9, 11 и 16).
 
 Укажите путь к SDK в `android/local.properties` (файл не коммитится):
@@ -11,19 +11,29 @@
 sdk.dir=C:/Users/<вы>/AppData/Local/Android/Sdk
 ```
 
+## Две версии из одного кода
+
+| Версия | Пакет | Чем отличается | Сборка |
+|---|---|---|---|
+| `full` | `app.switchflow.companion` | Всё, включая перенос приложений. Идёт с установщиком для ПК и сайтом. | `./gradlew assembleFullRelease` |
+| `play` | `app.switchflow.transfer` | Для Google Play: без переноса приложений (Play запрещает устанавливать приложения не из Play), бесплатный режим + покупка «SwitchFlow Pro» (`switchflow_pro`). | `./gradlew bundlePlayRelease` → `.aab` |
+
+Обе нацелены на Android 16 (API 36) — Google Play требует этого с 31.08.2026. Нужна платформа
+`android-36` в SDK. Выпуск в Google Play — [docs/store/PLAY_RELEASE.md](store/PLAY_RELEASE.md).
+
 ## Отладочная сборка
 
 ```bash
 cd android
-./gradlew assembleDebug          # Windows: gradlew.bat assembleDebug
+./gradlew assembleFullDebug      # Windows: gradlew.bat assembleFullDebug
 ```
 
-APK: `android/app/build/outputs/apk/debug/app-debug.apk`.
+APK: `android/app/build/outputs/apk/full/debug/app-full-debug.apk`.
 
 Установка на телефон с включённой «Отладкой по USB»:
 
 ```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/full/debug/app-full-debug.apk
 ```
 
 ## Тесты

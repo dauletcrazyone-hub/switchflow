@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Full build only (PC installer, website). Moving apps between phones: list the apps that appear
+  on the home screen and install received ones with the user's confirmation. Google Play forbids
+  installing apps from outside Play, so the "play" build has none of this.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application>
+        <receiver
+            android:name=".data.InstallResultReceiver"
+            android:exported="false" />
+    </application>
+</manifest>
